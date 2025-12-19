@@ -31,6 +31,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
   <link rel='stylesheet' href='css/common.css'>
 
   <title>Stereo Video Player</title>
+  <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
 </head>
 
 <body>
@@ -78,29 +79,26 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
     scene.addNode(new Gltf2Node({ url: 'media/gltf/home-theater/home-theater.gltf' }));
     scene.enableStats(false);
 
-    const CLOUDFRONT_URL = 'https://dkbgsf747pwjw.cloudfront.net';
-    const S3_PATH = 't1';
-    const VIDEO_FILENAME = '小狗_SV_20250610_063847_output1.mp4';
-    const AUDIO_FILENAME = '小狗_SV_20250610_063847_output2.mp4';
+    const VIDEO_URL = 'https://dkbgsf747pwjw.cloudfront.net/web-video-convert-output/自然风光/水箱金鱼_SV_20250610_055539sbs-1080.m3u8';
 
     let video = document.createElement('video');
     video.loop = true;
     video.crossOrigin = 'anonymous';
-    video.muted = true; // Mute video to use separate audio track
-    video.src = encodeURI(`${CLOUDFRONT_URL}/${S3_PATH}/${VIDEO_FILENAME}`);
 
-    let audio = document.createElement('audio');
-    audio.loop = true;
-    audio.crossOrigin = 'anonymous';
-    audio.src = encodeURI(`${CLOUDFRONT_URL}/${S3_PATH}/${AUDIO_FILENAME}`);
-
-    // Simple sync strategies
-    video.addEventListener('seeking', () => { audio.currentTime = video.currentTime; });
-    video.addEventListener('seeked', () => { audio.currentTime = video.currentTime; });
-    video.addEventListener('play', () => { audio.play().catch(e => console.warn('Audio play failed', e)); });
-    video.addEventListener('pause', () => { audio.pause(); });
-    video.addEventListener('waiting', () => { audio.pause(); });
-    video.addEventListener('playing', () => { audio.play().catch(e => { }); });
+    if (Hls.isSupported()) {
+      const hls = new Hls();
+      hls.loadSource(VIDEO_URL);
+      hls.attachMedia(video);
+      hls.on(Hls.Events.MANIFEST_PARSED, function () {
+        // video.play(); 
+        // Autoplay logic is handled by VR Session
+      });
+    } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+      // Native HLS support (Safari)
+      video.src = VIDEO_URL;
+    } else {
+      console.error("HLS not supported in this browser");
+    }
 
     let videoNode = new VideoNode({
       video: video,
@@ -195,16 +193,12 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
       let pending;
 
       if (autoplay) {
-        // If we want the video to autoplay when the session has fully started
-        // (which may be several seconds after the original requestSession
-        // call due to clicking through consent prompts or similar) then we
         // need to start the video within a user activation event first
         // (which this function is.) Once it's been started successfully we
         // pause it, at which point we can resume it pretty much whenever we'd
         // like.
-        pending = Promise.all([video.play(), audio.play()]).then(() => {
+        pending = video.play().then(() => {
           video.pause();
-          audio.pause();
         });
       }
 
@@ -218,7 +212,6 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
         if (autoplay) {
           pending.then(() => {
             video.play();
-            audio.play();
           });
         }
       });
@@ -263,7 +256,6 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
       if (event.session.isImmersive) {
         xrButton.setSession(null);
         video.pause();
-        audio.pause();
       }
     }
 

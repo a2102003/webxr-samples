@@ -125,6 +125,9 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
         let s = document.getElementById("videoselect");
         let newSrc = s.options[s.selectedIndex].value;
 
+        // Store the original URL for logic checks later (since HLS uses blob URLs)
+        video.dataset.src = newSrc;
+
         if (Hls.isSupported() && newSrc.endsWith('.m3u8')) {
           audio.pause(); // Stop any separate audio
           audio.src = "";

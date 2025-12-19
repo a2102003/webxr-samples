@@ -215,16 +215,37 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
         session.requestReferenceSpace('local').then((refSpace) => {
           xrRefSpace = refSpace;
 
-          let angle = Math.PI;
-          if (!video.src.includes("180"))
-            angle = Math.PI * 2;
+          let layer;
 
-          let layout = "stereo-top-bottom";
-          if (video.src.includes("sbs") || video.src.includes("SBS"))
-            layout = "stereo-left-right";
+          // Custom logic for User's Flat SBS videos
+          if (video.src.includes("output")) {
+            // Flat Quad Layer for Goldfish and Puppy
+            let transform = new XRRigidTransform({ x: 0, y: 0, z: -2.0 }); // 2 meters away
 
-          let layer = xrMediaFactory.createEquirectLayer(video, { space: refSpace, centralHorizontalAngle: angle, layout: layout });
-          // let layer = xrMediaFactory.createEquirectLayer(video, {space: refSpace});
+            // Calculate width/height based on aspect ratio if possible, otherwise default
+            // Assuming 16:9 aspect ratio standard for these videos
+            let width = 1.6 * 1.5;
+            let height = 0.9 * 1.5;
+
+            layer = xrMediaFactory.createQuadLayer(video, {
+              space: refSpace,
+              width: width,
+              height: height,
+              layout: "stereo-left-right",
+              transform: transform
+            });
+          } else {
+            let angle = Math.PI;
+            if (!video.src.includes("180"))
+              angle = Math.PI * 2;
+
+            let layout = "stereo-top-bottom";
+            if (video.src.includes("sbs") || video.src.includes("SBS"))
+              layout = "stereo-left-right";
+
+            layer = xrMediaFactory.createEquirectLayer(video, { space: refSpace, centralHorizontalAngle: angle, layout: layout });
+          }
+
           session.updateRenderState({ layers: [layer] });
 
           // Inform the session that we're ready to begin drawing.

@@ -47,7 +47,12 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
       <select id="videoselect">
         <option
           value="https://media.metaversegreen.com/%E8%87%AA%E7%84%B6%E9%A3%8E%E5%85%89/%E6%B0%B4%E7%AE%B1%E9%87%91%E9%B1%BC_SV_20250610_055539.mp4"
-          data-angle="180" data-layout="stereo-left-right" data-type="quad" data-distance="4">水箱金鱼 (平面 3D 巨幕)</option>
+          data-angle="180" data-layout="stereo-left-right" data-type="quad" data-distance="6">水箱金鱼 (平面 3D 巨幕) 6m
+        </option>
+        <option
+          value="https://media.metaversegreen.com/%E8%87%AA%E7%84%B6%E9%A3%8E%E5%85%89/%E6%B0%B4%E7%AE%B1%E9%87%91%E9%B1%BC_SV_20250610_055539.mp4"
+          data-angle="180" data-layout="stereo-left-right" data-type="quad" data-distance="8">水箱金鱼 (平面 3D 巨幕) 8m
+        </option>
         <option
           value="https://oculus-mp4.s3.amazonaws.com/immersive+video+8K+for+Oculus+Browser/everestvr_4.3k_30s_360_h264_crf23_binaural_CREDIT_JON_GRIFFITH_injected.mp4"
           data-angle="360" data-layout="mono">4.3K H.264 crf23 360</option>
@@ -158,8 +163,13 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
         // 背景
         uiContext.fillStyle = 'rgba(0, 0, 0, 0.7)';
-        uiContext.roundRect(0, 0, 1024, 256, 40);
-        uiContext.fill();
+        if (uiContext.roundRect) {
+          uiContext.beginPath();
+          uiContext.roundRect(0, 0, 1024, 256, 40);
+          uiContext.fill();
+        } else {
+          uiContext.fillRect(0, 0, 1024, 256);
+        }
 
         // 播放/暂停图标
         uiContext.fillStyle = 'white';
@@ -295,22 +305,44 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
             transform: new XRRigidTransform({ x: 0, y: -0.8, z: -2.0 }) // 放在视频下方一点
           });
 
-          // 创建全景图背景图层 (银河)
-          let backgroundLayer = xrMediaFactory.createEquirectLayer(skyboxImage, {
-            space: refSpace,
-            centralHorizontalAngle: Math.PI * 2,
-            layout: "mono"
-          });
+          let layers = [];
 
-          // 创建遮罩图层（用于边缘模糊效果）
-          let maskLayer = xrMediaFactory.createQuadLayer(maskCanvas, {
-            space: refSpace,
-            width: 4.2, // 比视频稍微宽一点
-            height: (4.2 / videoAspectRatio),
-            transform: new XRRigidTransform({ x: 0, y: 0, z: -selectedOption.dataset.distance + 0.01 }) // 放在视频前 1cm
-          });
+          // 仅为平面 (quad) 模式（如金鱼视频）添加全景背景和边缘模糊
+          if (selectedOption.dataset.type === 'quad') {
+            // 1. 全景图背景图层 (仅在图片加载完成后)
+            if (skyboxImage.complete && skyboxImage.naturalWidth !== 0) {
+              let backgroundLayer = xrMediaFactory.createEquirectLayer(skyboxImage, {
+                space: refSpace,
+                centralHorizontalAngle: Math.PI * 2,
+                layout: "mono"
+              });
+              layers.push(backgroundLayer);
+            }
 
-          session.updateRenderState({ layers: [backgroundLayer, layer, maskLayer, uiLayer] });
+            // 2. 核心视频图层
+            layers.push(layer);
+
+            // 3. 边缘模糊遮罩
+            let maskDist = parseFloat(selectedOption.dataset.distance || "2.0");
+            let maskLayer = xrMediaFactory.createQuadLayer(maskCanvas, {
+              space: refSpace,
+              width: 4.2,
+              height: (4.2 / videoAspectRatio),
+              transform: new XRRigidTransform({ x: 0, y: 0, z: -maskDist + 0.01 })
+            });
+            layers.push(maskLayer);
+          } else {
+            // 普通 360/180 采样视频，不加背景和遮罩
+            layers.push(layer);
+          }
+
+          // 4. UI 控制图层 (所有视频都保留)
+          layers.push(uiLayer);
+
+          session.updateRenderState({ layers: layers });
+
+          // Inform the session that we're ready to begin drawing.
+          session.requestAnimationFrame(onXRFrame);
 
           // Inform the session that we're ready to begin drawing.
           session.requestAnimationFrame(onXRFrame);
@@ -333,9 +365,10 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
         // 更新 UI 画布
         drawUI();
-        // 强制图层重新获取画布内容
-        if (xrSession && xrSession.renderState.layers[1]) {
-          xrSession.renderState.layers[1].needsRedraw = true;
+        // 动态寻找 UI 图层进行重绘 (它是最后一个图层)
+        let layers = session.renderState.layers;
+        if (layers && layers.length > 0) {
+          layers[layers.length - 1].needsRedraw = true;
         }
 
         // Inform the session that we're ready for the next frame.

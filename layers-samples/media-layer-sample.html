@@ -80,83 +80,6 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
       </select>
       <button id="xr-button" disabled>XR not found</button>
     </details>
-
-    <!-- DOM Overlay 容器 -->
-    <div id="xr-overlay">
-      <div id="video-controls">
-        <button id="play-pause-btn" class="ctrl-btn">PAUSE</button>
-        <div id="progress-container">
-          <div id="progress-bar"></div>
-        </div>
-        <span id="time-display">0:00 / 0:00</span>
-      </div>
-    </div>
-
-    <style>
-      #xr-overlay {
-        display: none;
-        position: absolute;
-        bottom: 50px;
-        left: 0;
-        right: 0;
-        background: transparent;
-        pointer-events: none;
-        justify-content: center;
-        align-items: center;
-        user-select: none;
-        z-index: 9999;
-      }
-
-      #xr-overlay.visible {
-        display: flex;
-      }
-
-      #video-controls {
-        pointer-events: auto;
-        display: flex;
-        align-items: center;
-        padding: 15px 30px;
-        background: rgba(0, 0, 0, 0.8);
-        border-radius: 40px;
-        border: 2px solid rgba(255, 255, 255, 0.3);
-        color: white;
-        font-family: sans-serif;
-        gap: 15px;
-        width: 80%;
-        max-width: 800px;
-      }
-
-      .ctrl-btn {
-        background: #007aff;
-        color: white;
-        border: none;
-        border-radius: 20px;
-        padding: 8px 20px;
-        font-size: 16px;
-        font-weight: bold;
-        cursor: pointer;
-      }
-
-      #progress-container {
-        flex-grow: 1;
-        height: 8px;
-        background: #444;
-        border-radius: 4px;
-        overflow: hidden;
-      }
-
-      #progress-bar {
-        height: 100%;
-        background: #00ff00;
-        width: 0%;
-      }
-
-      #time-display {
-        font-size: 14px;
-        white-space: nowrap;
-      }
-    </style>
-
     <p>Many thanks to Eric Cheng and Jon Griffith for the Everest media samples. Check out Jon's work on <a
         href="https://alpineexposures.com/">https://alpineexposures.com/</a>.
     <p>Pull trigger to restart the video; squeeze to pause.</p>
@@ -280,99 +203,63 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
         return mins + ":" + (secs < 10 ? "0" : "") + secs;
       }
 
+      function drawMask() {
+        maskContext.clearRect(0, 0, 1024, 1024);
+        // 创建一个从中心向边缘扩散的径向渐变，实现边缘模糊遮挡
+        let grad = maskContext.createRadialGradient(512, 512, 400, 512, 512, 510);
+        grad.addColorStop(0, 'rgba(0,0,0,0)'); // 中心透明
+        grad.addColorStop(1, 'rgba(0,0,0,1)'); // 边缘完全黑色
+        maskContext.fillStyle = grad;
+        maskContext.fillRect(0, 0, 1024, 1024);
+      }
+
       // 创建边缘模糊遮罩画布
       let maskCanvas = document.createElement('canvas');
       maskCanvas.width = 1024;
       maskCanvas.height = 1024;
       let maskContext = maskCanvas.getContext('2d');
 
-      const overlay = document.getElementById('xr-overlay');
-      const playPauseBtn = document.getElementById('play-pause-btn');
-      const progressBar = document.getElementById('progress-bar');
-      const timeDisplay = document.getElementById('time-display');
+      let gl = null;
+      let xrGLBinding = null;
+      let uiLayer = null;
+      let maskLayer = null;
+      let skyboxLayer = null;
 
-      playPauseBtn.addEventListener('click', () => {
-        if (video.paused) video.play();
-        else video.pause();
-      });
-
-      function updateOverlayUI() {
-        if (video.paused) {
-          playPauseBtn.textContent = 'PLAY';
-        } else {
-          playPauseBtn.textContent = 'PAUSE';
-        }
-
-        if (video.duration) {
-          let progress = (video.currentTime / video.duration) * 100;
-          progressBar.style.width = progress + '%';
-          timeDisplay.textContent = formatTime(video.currentTime) + " / " + formatTime(video.duration);
-        }
-      }
-
-      function formatTime(time) {
-        if (isNaN(time)) return "0:00";
-        let mins = Math.floor(time / 60);
-        let secs = Math.floor(time % 60);
-        return mins + ":" + (secs < 10 ? "0" : "") + secs;
-      }
-
-      // Called when the user clicks the button to enter XR. If we don't have a
-      // session we'll request one, and if we do have a session we'll end it.
       function onButtonClicked() {
         if (!xrSession) {
-          navigator.xr.requestSession('immersive-vr', {
-            requiredFeatures: ['layers'],
-            optionalFeatures: ['dom-overlay'],
-            domOverlay: { root: overlay }
-          }).then(onSessionStarted);
+          navigator.xr.requestSession('immersive-vr', { requiredFeatures: ['layers'] }).then(onSessionStarted);
           video.play();
         } else {
           xrSession.end();
         }
       }
 
-      // Called when we've successfully acquired a XRSession. In response we
-      // will set up the necessary session state and kick off the frame loop.
       function onSessionStarted(session) {
         xrSession = session;
         xrButton.textContent = 'Exit VR';
-        overlay.classList.add('visible');
 
-        // Listen for the sessions 'end' event so we can respond if the user
-        // or UA ends the session for any reason.
         session.addEventListener('end', onSessionEnded);
 
+        // 初始化 WebGL 环境 (用于上传 Canvas 纹理)
+        let canvas = document.createElement('canvas');
+        gl = canvas.getContext('webgl2', { xrCompatible: true });
+        xrGLBinding = new XRWebGLBinding(session, gl);
         xrMediaFactory = new XRMediaBinding(session);
 
         session.requestReferenceSpace('local').then((refSpace) => {
           let s = document.getElementById("videoselect");
           let selectedOption = s.options[s.selectedIndex];
 
-          // 优先通过 data 属性获取配置，如果没有则回退到简单的 URL 匹配
           let angleValue = selectedOption.dataset.angle || (selectedOption.value.includes("180") ? "180" : "360");
           let angle = (angleValue == "180") ? Math.PI : Math.PI * 2;
-
           let layout = selectedOption.dataset.layout || "stereo-top-bottom";
-          if (!selectedOption.dataset.layout) {
-            if (selectedOption.value.toLowerCase().includes("sbs")) {
-              layout = "stereo-left-right";
-            }
-          }
-
-          // 1. 确定单眼画面的宽高比
           let eyeWidth = video.videoWidth / (layout == "stereo-left-right" ? 2 : 1);
           let eyeHeight = video.videoHeight / (layout == "stereo-top-bottom" ? 2 : 1);
           let videoAspectRatio = eyeWidth / eyeHeight;
 
-          // 2. 根据宽高比计算垂直覆盖角度，防止拉伸
-          // 如果水平是 180 度 (PI)，那么垂直角度应该根据比例缩放
           let upperVerticalAngle = Math.PI / 2;
           let lowerVerticalAngle = -Math.PI / 2;
-
           if (angleValue == "180") {
-            // 对于 180 度视频，如果它不是正方形的(1:1)，我们需要限制垂直角度
-            // 理论高度角度 = 水平角度 / 宽高比
             let verticalFieldOfView = Math.PI / videoAspectRatio;
             if (verticalFieldOfView < Math.PI) {
               upperVerticalAngle = verticalFieldOfView / 2;
@@ -380,112 +267,108 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
             }
           }
 
-          if (video.videoWidth === 0) {
-            console.error("Video dimensions not ready!");
-            // 如果尺寸还没出来，等 100ms 再试一次，或者提醒用户
-          }
-
           let layer;
           if (selectedOption.dataset.type === 'quad') {
             let distance = parseFloat(selectedOption.dataset.distance || "4.0");
-            let width = 4.0;
             layer = xrMediaFactory.createQuadLayer(video, {
-              space: refSpace,
-              layout: layout,
-              width: width,
-              height: width / videoAspectRatio,
+              space: refSpace, layout: layout, width: 4.0, height: 4.0 / videoAspectRatio,
               transform: new XRRigidTransform({ x: 0, y: 0, z: -distance })
             });
           } else {
             layer = xrMediaFactory.createEquirectLayer(video, {
-              space: refSpace,
-              centralHorizontalAngle: angle,
-              upperVerticalAngle: upperVerticalAngle,
-              lowerVerticalAngle: lowerVerticalAngle,
-              layout: layout
+              space: refSpace, centralHorizontalAngle: angle, layout: layout,
+              upperVerticalAngle: upperVerticalAngle, lowerVerticalAngle: lowerVerticalAngle
             });
           }
 
+          // 创建空间 UI 图层
+          uiLayer = xrGLBinding.createQuadLayer({
+            space: refSpace, viewPixelWidth: 1024, viewPixelHeight: 256, layout: "mono"
+          });
+          uiLayer.width = 1.0; uiLayer.height = 0.25;
+          uiLayer.transform = new XRRigidTransform({ x: 0, y: -0.8, z: -2.0 });
+
           let layers = [];
-
-          // 仅为平面 (quad) 模式添加全景背景和边缘模糊
           if (selectedOption.dataset.type === 'quad') {
-            // 1. 全景背景
-            try {
-              if (skyboxImage.complete && skyboxImage.naturalWidth !== 0) {
-                let backgroundLayer = xrMediaFactory.createEquirectLayer(skyboxImage, {
-                  space: refSpace,
-                  centralHorizontalAngle: Math.PI * 2,
-                  layout: "mono"
-                });
-                layers.push(backgroundLayer);
-              }
-            } catch (e) { console.error(e); }
-
-            // 2. 视频层
-            layers.push(layer);
-
-            // 3. 边缘模糊遮罩 (使用之前定义的 maskCanvas)
-            try {
-              let maskDist = parseFloat(selectedOption.dataset.distance || "4.0");
-              let maskLayer = xrMediaFactory.createQuadLayer(maskCanvas, {
-                space: refSpace,
-                width: 4.2,
-                height: (4.2 / videoAspectRatio),
-                transform: new XRRigidTransform({ x: 0, y: 0, z: -maskDist + 0.01 })
+            // 1. 全景星空背景
+            if (skyboxImage.complete) {
+              skyboxLayer = xrGLBinding.createEquirectLayer({
+                space: refSpace, viewPixelWidth: 2048, viewPixelHeight: 1024, layout: "mono"
               });
-              layers.push(maskLayer);
-            } catch (e) { console.error(e); }
+              layers.push(skyboxLayer);
+            }
+            // 2. 视频巨幕
+            layers.push(layer);
+            // 3. 边缘模糊遮罩
+            maskLayer = xrGLBinding.createQuadLayer({
+              space: refSpace, viewPixelWidth: 1024, viewPixelHeight: 1024, layout: "mono"
+            });
+            maskLayer.width = 4.2; maskLayer.height = 4.2 / videoAspectRatio;
+            let dist = parseFloat(selectedOption.dataset.distance || "4.0");
+            maskLayer.transform = new XRRigidTransform({ x: 0, y: 0, z: -dist + 0.01 });
+            layers.push(maskLayer);
           } else {
             layers.push(layer);
           }
+          // 4. 控制面板图层总是在最前
+          layers.push(uiLayer);
 
           session.updateRenderState({ layers: layers });
-
-          // Inform the session that we're ready to begin drawing.
           session.requestAnimationFrame(onXRFrame);
         });
       }
 
-      // Called either when the user has explicitly ended the session by calling
-      // session.end() or when the UA has ended the session for any reason.
-      // At this point the session object is no longer usable and should be
-      // discarded.
       function onSessionEnded(event) {
         xrSession = null;
         xrButton.textContent = 'Enter VR';
-        overlay.classList.remove('visible');
         video.pause();
       }
 
-      // Called every time the XRSession requests that a new frame be drawn.
       function onXRFrame(time, frame) {
         let session = frame.session;
-
-        // 更新叠加层 UI
-        updateOverlayUI();
-
-        // Inform the session that we're ready for the next frame.
         session.requestAnimationFrame(onXRFrame);
+
+        // 刷新空间 UI 纹理
+        if (uiLayer && uiLayer.needsRedraw) {
+          drawUI();
+          let glayer = xrGLBinding.getSubImage(uiLayer, frame);
+          gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
+          gl.bindTexture(gl.TEXTURE_2D, glayer.colorTexture);
+          gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, 1024, 256, gl.RGBA, gl.UNSIGNED_BYTE, uiCanvas);
+        }
+
+        // 刷新星空背景 (仅加载一次)
+        if (skyboxLayer && skyboxLayer.needsRedraw) {
+          let glayer = xrGLBinding.getSubImage(skyboxLayer, frame);
+          gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
+          gl.bindTexture(gl.TEXTURE_2D, glayer.colorTexture);
+          gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, skyboxImage.width, skyboxImage.height, gl.RGBA, gl.UNSIGNED_BYTE, skyboxImage);
+        }
+
+        // 刷新边缘模糊遮罩 (仅加载一次)
+        if (maskLayer && maskLayer.needsRedraw) {
+          drawMask();
+          let glayer = xrGLBinding.getSubImage(maskLayer, frame);
+          gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
+          gl.bindTexture(gl.TEXTURE_2D, glayer.colorTexture);
+          gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, 1024, 1024, gl.RGBA, gl.UNSIGNED_BYTE, maskCanvas);
+        }
+        gl.bindTexture(gl.TEXTURE_2D, null);
 
         let force_mono = false;
         for (let source of session.inputSources) {
           if (source.gamepad) {
-            // Toggle Play/Pause on primary button press
             if (buttonPressedThisFrame(source.gamepad, 0)) {
               video.currentTime = 0;
               video.play();
             } else if (buttonPressedThisFrame(source.gamepad, 1)) {
-              if (video.paused)
-                video.play();
-              else
-                video.pause();
+              if (video.paused) video.play();
+              else video.pause();
             }
             force_mono |= buttonPressedThisFrame(source.gamepad, 4);
           }
         }
 
-        // QuadLayer doesn't have forceMonoPresentation, only Equirect/Cylinder
         if (xrSession && xrSession.renderState.layers.length > 0) {
           let layer = xrSession.renderState.layers[0];
           if (layer.forceMonoPresentation !== undefined) {

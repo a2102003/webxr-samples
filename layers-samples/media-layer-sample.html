@@ -210,38 +210,28 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
       let maskContext = maskCanvas.getContext('2d');
 
       function drawMask() {
+        // 使用一种更稳健的“中间镂空”法来实现完美的方形羽化
         maskContext.clearRect(0, 0, 1024, 1024);
 
-        let blurSize = 200; // 增加羽化宽度到 200 像素，使其更显眼
+        // 1. 先铺满全黑
+        maskContext.fillStyle = 'black';
+        maskContext.fillRect(0, 0, 1024, 1024);
 
-        // 渲染四个边角的渐变
-        // 左边缘
-        let gradL = maskContext.createLinearGradient(0, 512, blurSize, 512);
-        gradL.addColorStop(0, 'rgba(0,0,0,1)');
-        gradL.addColorStop(1, 'rgba(0,0,0,0)');
-        maskContext.fillStyle = gradL;
-        maskContext.fillRect(0, 0, blurSize, 1024);
+        // 2. 准备“挖洞”，使用 destination-out 模式
+        maskContext.save();
+        maskContext.globalCompositeOperation = 'destination-out';
 
-        // 右边缘
-        let gradR = maskContext.createLinearGradient(1024, 512, 1024 - blurSize, 512);
-        gradR.addColorStop(0, 'rgba(0,0,0,1)');
-        gradR.addColorStop(1, 'rgba(0,0,0,0)');
-        maskContext.fillStyle = gradR;
-        maskContext.fillRect(1024 - blurSize, 0, blurSize, 1024);
+        // 3. 利用阴影实现极其平滑的羽化边缘
+        let margin = 150; // 边缘宽度
+        maskContext.shadowBlur = 100; // 这里的数值决定了羽化的柔和程度
+        maskContext.shadowColor = 'black'; // 阴影颜色
 
-        // 上边缘
-        let gradT = maskContext.createLinearGradient(512, 0, 512, blurSize);
-        gradT.addColorStop(0, 'rgba(0,0,0,1)');
-        gradT.addColorStop(1, 'rgba(0,0,0,0)');
-        maskContext.fillStyle = gradT;
-        maskContext.fillRect(0, 0, 1024, blurSize);
+        // 在中间画一个白色矩形（会因为 destination-out 变成透明洞）
+        // 阴影会造成边缘的半透明过渡，即羽化效果
+        maskContext.fillStyle = 'white';
+        maskContext.fillRect(margin, margin, 1024 - margin * 2, 1024 - margin * 2);
 
-        // 下边缘
-        let gradB = maskContext.createLinearGradient(512, 1024, 512, 1024 - blurSize);
-        gradB.addColorStop(0, 'rgba(0,0,0,1)');
-        gradB.addColorStop(1, 'rgba(0,0,0,0)');
-        maskContext.fillStyle = gradB;
-        maskContext.fillRect(0, 1024 - blurSize, 1024, blurSize);
+        maskContext.restore();
       }
 
       let gl = null;
@@ -292,11 +282,14 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
             }
           }
 
+          // 增加安全性检查：如果视频元数据未就绪，使用 16:9 作为保底比例
+          let actualRatio = (video.videoWidth > 0) ? videoAspectRatio : 1.77;
+
           let layer;
           if (selectedOption.dataset.type === 'quad') {
             let distance = parseFloat(selectedOption.dataset.distance || "4.0");
             layer = xrMediaFactory.createQuadLayer(video, {
-              space: refSpace, layout: layout, width: 4.0, height: 4.0 / videoAspectRatio,
+              space: refSpace, layout: layout, width: 4.0, height: 4.0 / actualRatio,
               transform: new XRRigidTransform({ x: 0, y: 0, z: -distance })
             });
           } else {
@@ -325,11 +318,12 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
             maskLayer = xrGLBinding.createQuadLayer({
               space: refSpace, viewPixelWidth: 1024, viewPixelHeight: 1024, layout: "mono"
             });
-            maskLayer.width = 4.2; maskLayer.height = 4.2 / videoAspectRatio;
+            maskLayer.width = 4.2; maskLayer.height = 4.2 / actualRatio;
             let dist = parseFloat(selectedOption.dataset.distance || "4.0");
             maskLayer.transform = new XRRigidTransform({ x: 0, y: 0, z: -dist + 0.01 });
             layers.push(maskLayer);
-          } else {
+          }
+          else {
             layers.push(layer);
           }
           layers.push(uiLayer);
@@ -345,7 +339,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
         video.pause();
       }
 
-      let initialRedrawCount = 10; // 前10帧强制刷新，确保初始化成功
+      let initialRedrawCount = 60; // 增加到 60 帧（约 1 秒），确保在所有设备上都能完成首次纹理上传
 
       function onXRFrame(time, frame) {
         let session = frame.session;

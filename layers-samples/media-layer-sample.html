@@ -203,41 +203,9 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
         uiContext.fillText(formatTime(video.currentTime) + " / " + formatTime(video.duration), 600, 200);
       }
 
-      // 创建边缘模糊遮罩画布
-      let maskCanvas = document.createElement('canvas');
-      maskCanvas.width = 1024;
-      maskCanvas.height = 1024;
-      let maskContext = maskCanvas.getContext('2d');
-
-      function drawMask() {
-        // 使用一种更稳健的“中间镂空”法来实现完美的方形羽化
-        maskContext.clearRect(0, 0, 1024, 1024);
-
-        // 1. 先铺满全黑
-        maskContext.fillStyle = 'black';
-        maskContext.fillRect(0, 0, 1024, 1024);
-
-        // 2. 准备“挖洞”，使用 destination-out 模式
-        maskContext.save();
-        maskContext.globalCompositeOperation = 'destination-out';
-
-        // 3. 利用阴影实现极其平滑的羽化边缘
-        let margin = 150; // 边缘宽度
-        maskContext.shadowBlur = 100; // 这里的数值决定了羽化的柔和程度
-        maskContext.shadowColor = 'black'; // 阴影颜色
-
-        // 在中间画一个白色矩形（会因为 destination-out 变成透明洞）
-        // 阴影会造成边缘的半透明过渡，即羽化效果
-        maskContext.fillStyle = 'white';
-        maskContext.fillRect(margin, margin, 1024 - margin * 2, 1024 - margin * 2);
-
-        maskContext.restore();
-      }
-
       let gl = null;
       let xrGLBinding = null;
       let uiLayer = null;
-      let maskLayer = null;
       let skyboxLayer = null;
 
       function onButtonClicked() {
@@ -315,13 +283,6 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
               layers.push(skyboxLayer);
             }
             layers.push(layer);
-            maskLayer = xrGLBinding.createQuadLayer({
-              space: refSpace, viewPixelWidth: 1024, viewPixelHeight: 1024, layout: "mono"
-            });
-            maskLayer.width = 4.2; maskLayer.height = 4.2 / actualRatio;
-            let dist = parseFloat(selectedOption.dataset.distance || "4.0");
-            maskLayer.transform = new XRRigidTransform({ x: 0, y: 0, z: -dist + 0.01 });
-            layers.push(maskLayer);
           }
           else {
             layers.push(layer);
@@ -339,24 +300,25 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
         video.pause();
       }
 
-      let initialRedrawCount = 60; // 增加到 60 帧（约 1 秒），确保在所有设备上都能完成首次纹理上传
+      let initialRedrawCount = 60;
 
       function onXRFrame(time, frame) {
         let session = frame.session;
         session.requestAnimationFrame(onXRFrame);
 
-        // 强制前几帧重绘，确保所有设备都能正确看到图层
-        let forceRedraw = initialRedrawCount > 0;
-        if (forceRedraw) initialRedrawCount--;
-
-        // 仅在 needsRedraw 时更新，或者在前几帧强制更新
-        if (uiLayer && (uiLayer.needsRedraw || forceRedraw)) {
+        // 刷新 UI 图层（每一帧刷新以更新进度条）
+        if (uiLayer) {
+          uiLayer.needsRedraw = true; // 告知系统需要重绘
           drawUI();
           let glayer = xrGLBinding.getSubImage(uiLayer, frame);
           gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
           gl.bindTexture(gl.TEXTURE_2D, glayer.colorTexture);
           gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, 1024, 256, gl.RGBA, gl.UNSIGNED_BYTE, uiCanvas);
         }
+
+        // 刷新星空背景 (在前几帧或系统要求时刷新)
+        let forceRedraw = initialRedrawCount > 0;
+        if (forceRedraw) initialRedrawCount--;
 
         if (skyboxLayer && (skyboxLayer.needsRedraw || forceRedraw)) {
           let glayer = xrGLBinding.getSubImage(skyboxLayer, frame);
@@ -365,14 +327,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
           gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, skyboxImage.width, skyboxImage.height, gl.RGBA, gl.UNSIGNED_BYTE, skyboxImage);
         }
 
-        if (maskLayer && (maskLayer.needsRedraw || forceRedraw)) {
-          drawMask();
-          let glayer = xrGLBinding.getSubImage(maskLayer, frame);
-          gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
-          gl.bindTexture(gl.TEXTURE_2D, glayer.colorTexture);
-          gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, 1024, 1024, gl.RGBA, gl.UNSIGNED_BYTE, maskCanvas);
-        }
-
+        gl.bindTexture(gl.TEXTURE_2D, null);
         for (let source of session.inputSources) {
           if (source.gamepad) {
             if (buttonPressedThisFrame(source.gamepad, 0)) {

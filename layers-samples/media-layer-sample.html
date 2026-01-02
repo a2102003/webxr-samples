@@ -203,52 +203,21 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
         uiContext.fillText(formatTime(video.currentTime) + " / " + formatTime(video.duration), 600, 200);
       }
 
-      function drawMask() {
-        maskContext.clearRect(0, 0, 1024, 1024);
-
-        // 绘制一个矩形的暗角效果，保持视频画面的方形感
-        // 1. 设置半透明的暗部基础
-        maskContext.fillStyle = 'black';
-
-        // 我们通过绘制四个线型渐变来组合成一个方形的边缘羽化效果
-        // 这样可以确保中间大部分区域是完全透明的，不遮挡画面
-
-        let blurSize = 100; // 边缘模糊的宽度
-
-        // 左边缘
-        let gradL = maskContext.createLinearGradient(0, 512, blurSize, 512);
-        gradL.addColorStop(0, 'rgba(0,0,0,1)');
-        gradL.addColorStop(1, 'rgba(0,0,0,0)');
-        maskContext.fillStyle = gradL;
-        maskContext.fillRect(0, 0, blurSize, 1024);
-
-        // 右边缘
-        let gradR = maskContext.createLinearGradient(1024, 512, 1024 - blurSize, 512);
-        gradR.addColorStop(0, 'rgba(0,0,0,1)');
-        gradR.addColorStop(1, 'rgba(0,0,0,0)');
-        maskContext.fillStyle = gradR;
-        maskContext.fillRect(1024 - blurSize, 0, blurSize, 1024);
-
-        // 上边缘
-        let gradT = maskContext.createLinearGradient(512, 0, 512, blurSize);
-        gradT.addColorStop(0, 'rgba(0,0,0,1)');
-        gradT.addColorStop(1, 'rgba(0,0,0,0)');
-        maskContext.fillStyle = gradT;
-        maskContext.fillRect(0, 0, 1024, blurSize);
-
-        // 下边缘
-        let gradB = maskContext.createLinearGradient(512, 1024, 512, 1024 - blurSize);
-        gradB.addColorStop(0, 'rgba(0,0,0,1)');
-        gradB.addColorStop(1, 'rgba(0,0,0,0)');
-        maskContext.fillStyle = gradB;
-        maskContext.fillRect(0, 1024 - blurSize, 1024, blurSize);
-      }
-
       // 创建边缘模糊遮罩画布
       let maskCanvas = document.createElement('canvas');
       maskCanvas.width = 1024;
       maskCanvas.height = 1024;
       let maskContext = maskCanvas.getContext('2d');
+
+      function drawMask() {
+        maskContext.clearRect(0, 0, 1024, 1024);
+        // 使用径向渐变
+        let grad = maskContext.createRadialGradient(512, 512, 300, 512, 512, 512);
+        grad.addColorStop(0, 'rgba(0,0,0,0)');
+        grad.addColorStop(1, 'rgba(0,0,0,1)');
+        maskContext.fillStyle = grad;
+        maskContext.fillRect(0, 0, 1024, 1024);
+      }
 
       let gl = null;
       let xrGLBinding = null;
@@ -271,7 +240,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
         session.addEventListener('end', onSessionEnded);
 
-        // 初始化 WebGL 环境 (用于上传 Canvas 纹理)
+        // 初始化 WebGL 环境
         let canvas = document.createElement('canvas');
         gl = canvas.getContext('webgl2', { xrCompatible: true });
         xrGLBinding = new XRWebGLBinding(session, gl);
@@ -312,7 +281,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
             });
           }
 
-          // 创建空间 UI 图层
+          // 创建 UI 图层
           uiLayer = xrGLBinding.createQuadLayer({
             space: refSpace, viewPixelWidth: 1024, viewPixelHeight: 256, layout: "mono"
           });
@@ -321,16 +290,13 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
           let layers = [];
           if (selectedOption.dataset.type === 'quad') {
-            // 1. 全景星空背景
             if (skyboxImage.complete) {
               skyboxLayer = xrGLBinding.createEquirectLayer({
                 space: refSpace, viewPixelWidth: 2048, viewPixelHeight: 1024, layout: "mono"
               });
               layers.push(skyboxLayer);
             }
-            // 2. 视频巨幕
             layers.push(layer);
-            // 3. 边缘模糊遮罩
             maskLayer = xrGLBinding.createQuadLayer({
               space: refSpace, viewPixelWidth: 1024, viewPixelHeight: 1024, layout: "mono"
             });
@@ -341,7 +307,6 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
           } else {
             layers.push(layer);
           }
-          // 4. 控制面板图层总是在最前
           layers.push(uiLayer);
 
           session.updateRenderState({ layers: layers });
@@ -359,9 +324,8 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
         let session = frame.session;
         session.requestAnimationFrame(onXRFrame);
 
-        // 强制 UI 图层每一帧重绘，以更新进度条
-        if (uiLayer) {
-          uiLayer.needsRedraw = true; // 强制标记为需要更新
+        // 仅在 needsRedraw 时更新，避免过度重绘
+        if (uiLayer && uiLayer.needsRedraw) {
           drawUI();
           let glayer = xrGLBinding.getSubImage(uiLayer, frame);
           gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
@@ -369,7 +333,6 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
           gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, 1024, 256, gl.RGBA, gl.UNSIGNED_BYTE, uiCanvas);
         }
 
-        // 刷新星空背景 (仅在系统要求时加载)
         if (skyboxLayer && skyboxLayer.needsRedraw) {
           let glayer = xrGLBinding.getSubImage(skyboxLayer, frame);
           gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
@@ -377,7 +340,6 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
           gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, skyboxImage.width, skyboxImage.height, gl.RGBA, gl.UNSIGNED_BYTE, skyboxImage);
         }
 
-        // 刷新边缘模糊遮罩 (仅在系统要求时加载)
         if (maskLayer && maskLayer.needsRedraw) {
           drawMask();
           let glayer = xrGLBinding.getSubImage(maskLayer, frame);
@@ -385,7 +347,6 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
           gl.bindTexture(gl.TEXTURE_2D, glayer.colorTexture);
           gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, 1024, 1024, gl.RGBA, gl.UNSIGNED_BYTE, maskCanvas);
         }
-        gl.bindTexture(gl.TEXTURE_2D, null);
 
         for (let source of session.inputSources) {
           if (source.gamepad) {

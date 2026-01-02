@@ -161,7 +161,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
       let uiContext = uiCanvas.getContext('2d');
 
       function formatTime(time) {
-        if (isNaN(time)) return "0:00";
+        if (isNaN(time) || time === Infinity) return "0:00";
         let mins = Math.floor(time / 60);
         let secs = Math.floor(time % 60);
         return mins + ":" + (secs < 10 ? "0" : "") + secs;
@@ -192,7 +192,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
         uiContext.fillRect(300, 120, 600, 20);
 
         // 进度条填充
-        if (video.duration) {
+        if (video.duration && video.duration > 0) {
           let progress = video.currentTime / video.duration;
           uiContext.fillStyle = '#00ff00';
           uiContext.fillRect(300, 120, 600 * progress, 20);
@@ -230,6 +230,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
         xrMediaFactory = new XRMediaBinding(session);
 
         session.requestReferenceSpace('local').then((refSpace) => {
+          xrRefSpace = refSpace;
           let s = document.getElementById("videoselect");
           let selectedOption = s.options[s.selectedIndex];
 
@@ -238,7 +239,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
           let layout = selectedOption.dataset.layout || "stereo-top-bottom";
           let eyeWidth = video.videoWidth / (layout == "stereo-left-right" ? 2 : 1);
           let eyeHeight = video.videoHeight / (layout == "stereo-top-bottom" ? 2 : 1);
-          let videoAspectRatio = eyeWidth / eyeHeight;
+          let videoAspectRatio = (eyeWidth && eyeHeight) ? (eyeWidth / eyeHeight) : 1.77;
 
           let upperVerticalAngle = Math.PI / 2;
           let lowerVerticalAngle = -Math.PI / 2;
@@ -250,14 +251,11 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
             }
           }
 
-          // 增加安全性检查：如果视频元数据未就绪，使用 16:9 作为保底比例
-          let actualRatio = (video.videoWidth > 0) ? videoAspectRatio : 1.77;
-
           let layer;
           if (selectedOption.dataset.type === 'quad') {
             let distance = parseFloat(selectedOption.dataset.distance || "4.0");
             layer = xrMediaFactory.createQuadLayer(video, {
-              space: refSpace, layout: layout, width: 4.0, height: 4.0 / actualRatio,
+              space: refSpace, layout: layout, width: 4.0, height: 4.0 / videoAspectRatio,
               transform: new XRRigidTransform({ x: 0, y: 0, z: -distance })
             });
           } else {
@@ -275,18 +273,13 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
           uiLayer.transform = new XRRigidTransform({ x: 0, y: -0.8, z: -2.0 });
 
           let layers = [];
-          if (selectedOption.dataset.type === 'quad') {
-            if (skyboxImage.complete) {
-              skyboxLayer = xrGLBinding.createEquirectLayer({
-                space: refSpace, viewPixelWidth: 2048, viewPixelHeight: 1024, layout: "mono"
-              });
-              layers.push(skyboxLayer);
-            }
-            layers.push(layer);
-          }
-          else {
-            layers.push(layer);
-          }
+          // 始终创建星空层，即使没加载好
+          skyboxLayer = xrGLBinding.createEquirectLayer({
+            space: refSpace, viewPixelWidth: 2048, viewPixelHeight: 1024, layout: "mono"
+          });
+          layers.push(skyboxLayer);
+
+          layers.push(layer);
           layers.push(uiLayer);
 
           session.updateRenderState({ layers: layers });
@@ -306,28 +299,35 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
         let session = frame.session;
         session.requestAnimationFrame(onXRFrame);
 
-        // 刷新 UI 图层（每一帧刷新以更新进度条）
-        if (uiLayer) {
-          uiLayer.needsRedraw = true; // 告知系统需要重绘
-          drawUI();
+        // 统一刷新逻辑：手动管理重绘逻辑
+        let frameCount = initialRedrawCount > 0;
+        if (frameCount) initialRedrawCount--;
+
+        // UI 层：视频播放时或前几帧强制刷新
+        if (uiLayer && (!video.paused || frameCount || uiLayer.needsRedraw)) {
           let glayer = xrGLBinding.getSubImage(uiLayer, frame);
-          gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
-          gl.bindTexture(gl.TEXTURE_2D, glayer.colorTexture);
-          gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, 1024, 256, gl.RGBA, gl.UNSIGNED_BYTE, uiCanvas);
+          if (glayer) {
+            drawUI();
+            gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
+            gl.bindTexture(gl.TEXTURE_2D, glayer.colorTexture);
+            gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, 1024, 256, gl.RGBA, gl.UNSIGNED_BYTE, uiCanvas);
+            uiLayer.needsRedraw = false;
+          }
         }
 
-        // 刷新星空背景 (在前几帧或系统要求时刷新)
-        let forceRedraw = initialRedrawCount > 0;
-        if (forceRedraw) initialRedrawCount--;
-
-        if (skyboxLayer && (skyboxLayer.needsRedraw || forceRedraw)) {
+        // 星空层：加载完成后刷新
+        if (skyboxLayer && skyboxImage.complete && (frameCount || skyboxLayer.needsRedraw)) {
           let glayer = xrGLBinding.getSubImage(skyboxLayer, frame);
-          gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
-          gl.bindTexture(gl.TEXTURE_2D, glayer.colorTexture);
-          gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, skyboxImage.width, skyboxImage.height, gl.RGBA, gl.UNSIGNED_BYTE, skyboxImage);
+          if (glayer) {
+            gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
+            gl.bindTexture(gl.TEXTURE_2D, glayer.colorTexture);
+            gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, skyboxImage.width, skyboxImage.height, gl.RGBA, gl.UNSIGNED_BYTE, skyboxImage);
+            skyboxLayer.needsRedraw = false;
+          }
         }
 
         gl.bindTexture(gl.TEXTURE_2D, null);
+
         for (let source of session.inputSources) {
           if (source.gamepad) {
             if (buttonPressedThisFrame(source.gamepad, 0)) {

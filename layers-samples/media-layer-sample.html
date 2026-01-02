@@ -47,10 +47,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
       <select id="videoselect">
         <option
           value="https://media.metaversegreen.com/%E8%87%AA%E7%84%B6%E9%A3%8E%E5%85%89/%E6%B0%B4%E7%AE%B1%E9%87%91%E9%B1%BC_SV_20250610_055539.mp4"
-          data-angle="180" data-layout="stereo-left-right" data-type="quad" data-distance="8">水箱金鱼 (平面 3D 巨幕) 8m</option>
-        <option
-          value="https://media.metaversegreen.com/%E8%87%AA%E7%84%B6%E9%A3%8E%E5%85%89/%E6%B0%B4%E7%AE%B1%E9%87%91%E9%B1%BC_SV_20250610_055539.mp4"
-          data-angle="180" data-layout="stereo-left-right" data-type="quad" data-distance="6">水箱金鱼 (平面 3D 巨幕) 6m</option>
+          data-angle="180" data-layout="stereo-left-right" data-type="quad" data-distance="4">水箱金鱼 (平面 3D 巨幕)</option>
         <option
           value="https://oculus-mp4.s3.amazonaws.com/immersive+video+8K+for+Oculus+Browser/everestvr_4.3k_30s_360_h264_crf23_binaural_CREDIT_JON_GRIFFITH_injected.mp4"
           data-angle="360" data-layout="mono">4.3K H.264 crf23 360</option>
@@ -133,6 +130,9 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
       // Checks to see if WebXR is available and, if so, requests an XRDevice
       // that is connected to the system and tests it to ensure it supports the
       // desired session options.
+      let skyboxImage = new Image();
+      skyboxImage.src = '../media/textures/milky-way-4k.png';
+
       function initXR() {
         // Is WebXR available on this UA?
         if (navigator.xr) {
@@ -147,6 +147,65 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
           });
         }
       }
+
+      let uiCanvas = document.createElement('canvas');
+      uiCanvas.width = 1024;
+      uiCanvas.height = 256;
+      let uiContext = uiCanvas.getContext('2d');
+
+      function drawUI() {
+        uiContext.clearRect(0, 0, uiCanvas.width, uiCanvas.height);
+
+        // 背景
+        uiContext.fillStyle = 'rgba(0, 0, 0, 0.7)';
+        uiContext.roundRect(0, 0, 1024, 256, 40);
+        uiContext.fill();
+
+        // 播放/暂停图标
+        uiContext.fillStyle = 'white';
+        uiContext.font = '80px Arial';
+        uiContext.textAlign = 'center';
+        let statusText = video.paused ? '▶' : '||';
+        uiContext.fillText(statusText, 150, 150);
+
+        // 进度条背景
+        uiContext.fillStyle = '#555';
+        uiContext.fillRect(300, 120, 600, 20);
+
+        // 进度条填充
+        if (video.duration) {
+          let progress = video.currentTime / video.duration;
+          uiContext.fillStyle = '#00ff00';
+          uiContext.fillRect(300, 120, 600 * progress, 20);
+        }
+
+        // 时间文字
+        uiContext.font = '40px Arial';
+        uiContext.fillText(formatTime(video.currentTime) + " / " + formatTime(video.duration), 600, 200);
+      }
+
+      function formatTime(time) {
+        if (isNaN(time)) return "0:00";
+        let mins = Math.floor(time / 60);
+        let secs = Math.floor(time % 60);
+        return mins + ":" + (secs < 10 ? "0" : "") + secs;
+      }
+
+      // 创建边缘模糊遮罩画布
+      let maskCanvas = document.createElement('canvas');
+      maskCanvas.width = 1024;
+      maskCanvas.height = 1024;
+      let maskContext = maskCanvas.getContext('2d');
+
+      function drawMask() {
+        let grad = maskContext.createRadialGradient(512, 512, 300, 512, 512, 512);
+        grad.addColorStop(0, 'rgba(0,0,0,0)');   // 中间透明
+        grad.addColorStop(0.8, 'rgba(0,0,0,0.5)'); // 边缘开始变暗
+        grad.addColorStop(1, 'rgba(0,0,0,1)');   // 最边缘全黑
+        maskContext.fillStyle = grad;
+        maskContext.fillRect(0, 0, 1024, 1024);
+      }
+      drawMask();
 
       // Called when the user clicks the button to enter XR. If we don't have a
       // session we'll request one, and if we do have a session we'll end it.
@@ -228,7 +287,30 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
               layout: layout
             });
           }
-          session.updateRenderState({ layers: [layer] });
+
+          let uiLayer = xrMediaFactory.createQuadLayer(uiCanvas, {
+            space: refSpace,
+            width: 1.0,
+            height: 0.25,
+            transform: new XRRigidTransform({ x: 0, y: -0.8, z: -2.0 }) // 放在视频下方一点
+          });
+
+          // 创建全景图背景图层 (银河)
+          let backgroundLayer = xrMediaFactory.createEquirectLayer(skyboxImage, {
+            space: refSpace,
+            centralHorizontalAngle: Math.PI * 2,
+            layout: "mono"
+          });
+
+          // 创建遮罩图层（用于边缘模糊效果）
+          let maskLayer = xrMediaFactory.createQuadLayer(maskCanvas, {
+            space: refSpace,
+            width: 4.2, // 比视频稍微宽一点
+            height: (4.2 / videoAspectRatio),
+            transform: new XRRigidTransform({ x: 0, y: 0, z: -selectedOption.dataset.distance + 0.01 }) // 放在视频前 1cm
+          });
+
+          session.updateRenderState({ layers: [backgroundLayer, layer, maskLayer, uiLayer] });
 
           // Inform the session that we're ready to begin drawing.
           session.requestAnimationFrame(onXRFrame);
@@ -248,6 +330,13 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
       // Called every time the XRSession requests that a new frame be drawn.
       function onXRFrame(time, frame) {
         let session = frame.session;
+
+        // 更新 UI 画布
+        drawUI();
+        // 强制图层重新获取画布内容
+        if (xrSession && xrSession.renderState.layers[1]) {
+          xrSession.renderState.layers[1].needsRedraw = true;
+        }
 
         // Inform the session that we're ready for the next frame.
         session.requestAnimationFrame(onXRFrame);

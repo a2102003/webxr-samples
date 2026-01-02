@@ -80,6 +80,83 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
       </select>
       <button id="xr-button" disabled>XR not found</button>
     </details>
+
+    <!-- DOM Overlay 容器 -->
+    <div id="xr-overlay">
+      <div id="video-controls">
+        <button id="play-pause-btn" class="ctrl-btn">PAUSE</button>
+        <div id="progress-container">
+          <div id="progress-bar"></div>
+        </div>
+        <span id="time-display">0:00 / 0:00</span>
+      </div>
+    </div>
+
+    <style>
+      #xr-overlay {
+        display: none;
+        position: absolute;
+        bottom: 50px;
+        left: 0;
+        right: 0;
+        background: transparent;
+        pointer-events: none;
+        justify-content: center;
+        align-items: center;
+        user-select: none;
+        z-index: 9999;
+      }
+
+      #xr-overlay.visible {
+        display: flex;
+      }
+
+      #video-controls {
+        pointer-events: auto;
+        display: flex;
+        align-items: center;
+        padding: 15px 30px;
+        background: rgba(0, 0, 0, 0.8);
+        border-radius: 40px;
+        border: 2px solid rgba(255, 255, 255, 0.3);
+        color: white;
+        font-family: sans-serif;
+        gap: 15px;
+        width: 80%;
+        max-width: 800px;
+      }
+
+      .ctrl-btn {
+        background: #007aff;
+        color: white;
+        border: none;
+        border-radius: 20px;
+        padding: 8px 20px;
+        font-size: 16px;
+        font-weight: bold;
+        cursor: pointer;
+      }
+
+      #progress-container {
+        flex-grow: 1;
+        height: 8px;
+        background: #444;
+        border-radius: 4px;
+        overflow: hidden;
+      }
+
+      #progress-bar {
+        height: 100%;
+        background: #00ff00;
+        width: 0%;
+      }
+
+      #time-display {
+        font-size: 14px;
+        white-space: nowrap;
+      }
+    </style>
+
     <p>Many thanks to Eric Cheng and Jon Griffith for the Everest media samples. Check out Jon's work on <a
         href="https://alpineexposures.com/">https://alpineexposures.com/</a>.
     <p>Pull trigger to restart the video; squeeze to pause.</p>
@@ -209,21 +286,46 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
       maskCanvas.height = 1024;
       let maskContext = maskCanvas.getContext('2d');
 
-      function drawMask() {
-        let grad = maskContext.createRadialGradient(512, 512, 300, 512, 512, 512);
-        grad.addColorStop(0, 'rgba(0,0,0,0)');   // 中间透明
-        grad.addColorStop(0.8, 'rgba(0,0,0,0.5)'); // 边缘开始变暗
-        grad.addColorStop(1, 'rgba(0,0,0,1)');   // 最边缘全黑
-        maskContext.fillStyle = grad;
-        maskContext.fillRect(0, 0, 1024, 1024);
+      const overlay = document.getElementById('xr-overlay');
+      const playPauseBtn = document.getElementById('play-pause-btn');
+      const progressBar = document.getElementById('progress-bar');
+      const timeDisplay = document.getElementById('time-display');
+
+      playPauseBtn.addEventListener('click', () => {
+        if (video.paused) video.play();
+        else video.pause();
+      });
+
+      function updateOverlayUI() {
+        if (video.paused) {
+          playPauseBtn.textContent = 'PLAY';
+        } else {
+          playPauseBtn.textContent = 'PAUSE';
+        }
+
+        if (video.duration) {
+          let progress = (video.currentTime / video.duration) * 100;
+          progressBar.style.width = progress + '%';
+          timeDisplay.textContent = formatTime(video.currentTime) + " / " + formatTime(video.duration);
+        }
       }
-      drawMask();
+
+      function formatTime(time) {
+        if (isNaN(time)) return "0:00";
+        let mins = Math.floor(time / 60);
+        let secs = Math.floor(time % 60);
+        return mins + ":" + (secs < 10 ? "0" : "") + secs;
+      }
 
       // Called when the user clicks the button to enter XR. If we don't have a
       // session we'll request one, and if we do have a session we'll end it.
       function onButtonClicked() {
         if (!xrSession) {
-          navigator.xr.requestSession('immersive-vr', { requiredFeatures: ['layers'] }).then(onSessionStarted);
+          navigator.xr.requestSession('immersive-vr', {
+            requiredFeatures: ['layers'],
+            optionalFeatures: ['dom-overlay'],
+            domOverlay: { root: overlay }
+          }).then(onSessionStarted);
           video.play();
         } else {
           xrSession.end();
@@ -235,6 +337,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
       function onSessionStarted(session) {
         xrSession = session;
         xrButton.textContent = 'Exit VR';
+        overlay.classList.add('visible');
 
         // Listen for the sessions 'end' event so we can respond if the user
         // or UA ends the session for any reason.
@@ -303,14 +406,41 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
             });
           }
 
-          let uiLayer = xrMediaFactory.createQuadLayer(uiCanvas, {
-            space: refSpace,
-            width: 1.0,
-            height: 0.25,
-            transform: new XRRigidTransform({ x: 0, y: -0.8, z: -2.0 })
-          });
+          let layers = [];
 
-          session.updateRenderState({ layers: [layer, uiLayer] });
+          // 仅为平面 (quad) 模式添加全景背景和边缘模糊
+          if (selectedOption.dataset.type === 'quad') {
+            // 1. 全景背景
+            try {
+              if (skyboxImage.complete && skyboxImage.naturalWidth !== 0) {
+                let backgroundLayer = xrMediaFactory.createEquirectLayer(skyboxImage, {
+                  space: refSpace,
+                  centralHorizontalAngle: Math.PI * 2,
+                  layout: "mono"
+                });
+                layers.push(backgroundLayer);
+              }
+            } catch (e) { console.error(e); }
+
+            // 2. 视频层
+            layers.push(layer);
+
+            // 3. 边缘模糊遮罩 (使用之前定义的 maskCanvas)
+            try {
+              let maskDist = parseFloat(selectedOption.dataset.distance || "4.0");
+              let maskLayer = xrMediaFactory.createQuadLayer(maskCanvas, {
+                space: refSpace,
+                width: 4.2,
+                height: (4.2 / videoAspectRatio),
+                transform: new XRRigidTransform({ x: 0, y: 0, z: -maskDist + 0.01 })
+              });
+              layers.push(maskLayer);
+            } catch (e) { console.error(e); }
+          } else {
+            layers.push(layer);
+          }
+
+          session.updateRenderState({ layers: layers });
 
           // Inform the session that we're ready to begin drawing.
           session.requestAnimationFrame(onXRFrame);
@@ -324,6 +454,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
       function onSessionEnded(event) {
         xrSession = null;
         xrButton.textContent = 'Enter VR';
+        overlay.classList.remove('visible');
         video.pause();
       }
 
@@ -331,16 +462,8 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
       function onXRFrame(time, frame) {
         let session = frame.session;
 
-        // 更新 UI
-        drawUI();
-        // 查找并重绘 UI 层 (通过尺寸识别)
-        if (session.renderState.layers) {
-          for (let l of session.renderState.layers) {
-            if (l.width === 1.0 && l.height === 0.25) {
-              l.needsRedraw = true;
-            }
-          }
-        }
+        // 更新叠加层 UI
+        updateOverlayUI();
 
         // Inform the session that we're ready for the next frame.
         session.requestAnimationFrame(onXRFrame);

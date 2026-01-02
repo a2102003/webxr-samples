@@ -136,7 +136,9 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
       // that is connected to the system and tests it to ensure it supports the
       // desired session options.
       let skyboxImage = new Image();
-      skyboxImage.src = '../media/textures/milky-way-4k.png';
+      skyboxImage.onload = () => console.log("Skybox image loaded successfully");
+      skyboxImage.onerror = () => console.error("Skybox image failed to load");
+      skyboxImage.src = '../media/textures/milky-way-2k.png';
 
       function initXR() {
         // Is WebXR available on this UA?
@@ -309,40 +311,45 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
           // 仅为平面 (quad) 模式（如金鱼视频）添加全景背景和边缘模糊
           if (selectedOption.dataset.type === 'quad') {
-            // 1. 全景图背景图层 (仅在图片加载完成后)
-            if (skyboxImage.complete && skyboxImage.naturalWidth !== 0) {
-              let backgroundLayer = xrMediaFactory.createEquirectLayer(skyboxImage, {
-                space: refSpace,
-                centralHorizontalAngle: Math.PI * 2,
-                layout: "mono"
-              });
-              layers.push(backgroundLayer);
+            // 1. 全景图背景图层
+            try {
+              if (skyboxImage.complete && skyboxImage.naturalWidth !== 0) {
+                let backgroundLayer = xrMediaFactory.createEquirectLayer(skyboxImage, {
+                  space: refSpace,
+                  centralHorizontalAngle: Math.PI * 2,
+                  layout: "mono"
+                });
+                layers.push(backgroundLayer);
+              }
+            } catch (e) {
+              console.error("Background layer failed:", e);
             }
 
             // 2. 核心视频图层
             layers.push(layer);
 
             // 3. 边缘模糊遮罩
-            let maskDist = parseFloat(selectedOption.dataset.distance || "2.0");
-            let maskLayer = xrMediaFactory.createQuadLayer(maskCanvas, {
-              space: refSpace,
-              width: 4.2,
-              height: (4.2 / videoAspectRatio),
-              transform: new XRRigidTransform({ x: 0, y: 0, z: -maskDist + 0.01 })
-            });
-            layers.push(maskLayer);
+            try {
+              let maskDist = parseFloat(selectedOption.dataset.distance || "2.0");
+              let maskLayer = xrMediaFactory.createQuadLayer(maskCanvas, {
+                space: refSpace,
+                width: 4.2,
+                height: (4.2 / videoAspectRatio),
+                transform: new XRRigidTransform({ x: 0, y: 0, z: -maskDist + 0.01 })
+              });
+              layers.push(maskLayer);
+            } catch (e) {
+              console.error("Mask layer failed:", e);
+            }
           } else {
-            // 普通 360/180 采样视频，不加背景和遮罩
+            // 普通 360/180 采样视频
             layers.push(layer);
           }
 
-          // 4. UI 控制图层 (所有视频都保留)
+          // 4. UI 控制图层
           layers.push(uiLayer);
 
           session.updateRenderState({ layers: layers });
-
-          // Inform the session that we're ready to begin drawing.
-          session.requestAnimationFrame(onXRFrame);
 
           // Inform the session that we're ready to begin drawing.
           session.requestAnimationFrame(onXRFrame);

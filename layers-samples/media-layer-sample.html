@@ -203,6 +203,13 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
         uiContext.fillText(formatTime(video.currentTime) + " / " + formatTime(video.duration), 600, 200);
       }
 
+      function formatTime(time) {
+        if (isNaN(time)) return "0:00";
+        let mins = Math.floor(time / 60);
+        let secs = Math.floor(time % 60);
+        return mins + ":" + (secs < 10 ? "0" : "") + secs;
+      }
+
       // 创建边缘模糊遮罩画布
       let maskCanvas = document.createElement('canvas');
       maskCanvas.width = 1024;

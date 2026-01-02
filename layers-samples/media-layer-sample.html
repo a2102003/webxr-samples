@@ -325,14 +325,6 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
       function onXRFrame(time, frame) {
         let session = frame.session;
 
-        // 更新 UI 画布
-        drawUI();
-        // 动态寻找 UI 图层进行重绘 (它是最后一个图层)
-        let layers = session.renderState.layers;
-        if (layers && layers.length > 0) {
-          layers[layers.length - 1].needsRedraw = true;
-        }
-
         // Inform the session that we're ready for the next frame.
         session.requestAnimationFrame(onXRFrame);
 
@@ -352,7 +344,14 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
             force_mono |= buttonPressedThisFrame(source.gamepad, 4);
           }
         }
-        xrSession.renderState.layers[0].forceMonoPresentation = force_mono;
+
+        // QuadLayer doesn't have forceMonoPresentation, only Equirect/Cylinder
+        if (xrSession && xrSession.renderState.layers.length > 0) {
+          let layer = xrSession.renderState.layers[0];
+          if (layer.forceMonoPresentation !== undefined) {
+            layer.forceMonoPresentation = force_mono;
+          }
+        }
       }
 
       // Start the XR application.

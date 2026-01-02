@@ -191,7 +191,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
           let s = document.getElementById("videoselect");
           let opt = s.options[s.selectedIndex];
 
-          let layout = opt.dataset.layout || "stereo-top-bottom";
+          let layout = opt.dataset.layout || "stereo-left-right";
           let angleValue = opt.dataset.angle || "180";
           let type = opt.dataset.type;
 
@@ -267,7 +267,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
         }
 
         if (uiLayer) {
-          uiLayer.needsRedraw = true; // Always update UI
+          uiLayer.needsRedraw = true;
           drawUI();
           let sub = xrGLBinding.getSubImage(uiLayer, frame);
           gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
@@ -281,7 +281,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
             gl.bindTexture(gl.TEXTURE_2D, sub.colorTexture);
             gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, skyboxImage.width, skyboxImage.height, gl.RGBA, gl.UNSIGNED_BYTE, skyboxImage);
           } else {
-            skyboxLayer.needsRedraw = true; // Retry next frame
+            skyboxLayer.needsRedraw = true;
           }
         }
 

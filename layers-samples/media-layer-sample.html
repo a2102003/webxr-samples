@@ -30,7 +30,6 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
   <link rel='icon' type='image/png' sizes='96x96' href='../favicon-96x96.png'>
   <link rel='stylesheet' href='../css/common.css'>
   <title>WebXR Media Layers</title>
-
 </head>
 
 <body>
@@ -38,9 +37,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
     <details open>
       <summary>Media layer samples</summary>
       <p>
-        This sample shows various video resolutions displayed using WebXR Media Layers. On browsers that don't support
-        layers, the <a href="https://github.com/immersive-web/webxr-layers-polyfill">WebXR Layers polyfill</a> will be
-        used.
+        This sample shows various video resolutions displayed using WebXR Media Layers.
         <a class="back" href="./">Back</a>
       </p>
       <label>Choose a video</label>
@@ -55,146 +52,52 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
         </option>
         <option
           value="https://oculus-mp4.s3.amazonaws.com/immersive+video+8K+for+Oculus+Browser/everestvr_4.3k_30s_360_h264_crf23_binaural_CREDIT_JON_GRIFFITH_injected.mp4"
-          data-angle="360" data-layout="mono">4.3K H.264 crf23 360</option>
-        <option
-          value="https://oculus-mp4.s3.amazonaws.com/immersive+video+8K+for+Oculus+Browser/everestvr_5.7k_30s_360_h265_crf23_binaural_CREDIT_JON_GRIFFITH_injected.mp4"
-          data-angle="360" data-layout="mono">5.7K H.265 crf23 360</option>
+          data-angle="360" data-layout="mono">4.3K H.264 360</option>
         <option
           value="https://oculus-mp4.s3.amazonaws.com/immersive+video+8K+for+Oculus+Browser/everestvr_6.2k_30s_180_SBS_h264_crf27_binaural_CREDIT_JON_GRIFFITH_v2.mp4"
-          data-angle="180" data-layout="stereo-left-right">6.2K H.264 crf27 180 side-by-side</option>
-        <option
-          value="https://oculus-mp4.s3.amazonaws.com/immersive+video+8K+for+Oculus+Browser/everestvr_6.2k_30s_180_TB_h264_crf27_CREDIT_JON_GRIFFITH-injected.mp4"
-          data-angle="180" data-layout="stereo-top-bottom">6.2K H.264 crf27 180 top-bottom</option>
-        <option
-          value="https://oculus-mp4.s3.amazonaws.com/immersive+video+8K+for+Oculus+Browser/everestvr_8k_30s_180_SBS_h265_crf23_binaural_CREDIT_JON_GRIFFITH-injected.mp4"
-          data-angle="180" data-layout="stereo-left-right">8K H.265 crf23 180 side-by-side</option>
-        <option
-          value="https://oculus-mp4.s3.amazonaws.com/immersive+video+8K+for+Oculus+Browser/everestvr_8k_30s_180_TB_h265_crf23_binaural_CREDIT_JON_GRIFFITH-injected.mp4"
-          data-angle="180" data-layout="stereo-top-bottom">8K H.265 crf23 180 top-bottom</option>
-        <option
-          value="https://oculus-mp4.s3.amazonaws.com/immersive+video+8K+for+Oculus+Browser/everestvr_30s_180_SBS_vp8_crf23_binaural_CREDIT_JON_GRIFFITH-injected.webm"
-          data-angle="180" data-layout="stereo-left-right">VP8 crf23 180 side-by-side</option>
-        <option
-          value="https://oculus-mp4.s3.amazonaws.com/immersive+video+8K+for+Oculus+Browser/everestvr_4k_30s_180_SBS_av1_crf23_binaural_CREDIT_JON_GRIFFITH-injected.mp4"
-          data-angle="180" data-layout="stereo-left-right">8K AV1 crf23 180 side-by-side</option>
+          data-angle="180" data-layout="stereo-left-right">6.2K VR180 SBS</option>
       </select>
       <button id="xr-button" disabled>XR not found</button>
     </details>
-    <p>Many thanks to Eric Cheng and Jon Griffith for the Everest media samples. Check out Jon's work on <a
-        href="https://alpineexposures.com/">https://alpineexposures.com/</a>.
-    <p>Pull trigger to restart the video; squeeze to pause.</p>
+    <p>Use your <b>Right Controller</b> to point and click (Trigger) on the control panel.</p>
   </header>
-  <main style='text-align: center;'>
-  </main>
+  <main style='text-align: center;'></main>
+
   <script src="https://immersive-web.github.io/webxr-layers-polyfill/build/webxr-layers-polyfill.js"></script>
   <script>
     (function () {
       'use strict';
 
-      // initialize the polyfill for unsupported devices
-      let layersPolyfill = new WebXRLayersPolyfill()
+      new WebXRLayersPolyfill();
 
-      // XR globals.
       let xrButton = document.getElementById('xr-button');
       let xrSession = null;
       let xrRefSpace = null;
       let xrMediaFactory = null;
-      let cylinder_layer = false;
+      let xrGLBinding = null;
+      let gl = null;
+
+      let uiLayer = null;
+      let maskLayer = null;
+      let skyboxLayer = null;
+
+      let cursorX = -1;
+      let cursorY = -1;
 
       let video = document.createElement('video');
-      video.loop = false;
+      video.loop = true;
       video.crossOrigin = "anonymous";
-      video.preload = 'auto';
-      video.autoload = true;
-      function buttonPressedThisFrame(gamepad, index) {
-        return (index < gamepad.buttons.length &&
-          gamepad.buttons[index].pressed);
-      }
-      function videoSelect() {
-        let s = document.getElementById("videoselect");
-        video.src = s.options[s.selectedIndex].value;
-        xrButton.textContent = 'Loading video';
-        xrButton.disabled = true;
-      }
 
-      video.oncanplaythrough = (event) => {
-        xrButton.disabled = false;
-        xrButton.textContent = 'Enter XR';
-      }
-
-      video.onerror = (event) => {
-        xrButton.disabled = true;
-        xrButton.textContent = 'Can\'t play video' + video.error.message;
-      };
-
-      videoSelect();
-      document.getElementById("videoselect").addEventListener('change', (event) => {
-        videoSelect();
-      });
-
-      // Checks to see if WebXR is available and, if so, requests an XRDevice
-      // that is connected to the system and tests it to ensure it supports the
-      // desired session options.
       let skyboxImage = new Image();
-      skyboxImage.onload = () => console.log("Skybox image loaded successfully");
-      skyboxImage.onerror = () => console.error("Skybox image failed to load");
       skyboxImage.src = '../media/textures/milky-way-2k.png';
 
-      function initXR() {
-        // Is WebXR available on this UA?
-        if (navigator.xr) {
-          // If the device allows creation of exclusive sessions set it as the
-          // target of the 'Enter XR' button.
-          navigator.xr.isSessionSupported('immersive-vr').then((supported) => {
-            if (supported) {
-              // Updates the button to start an XR session when clicked.
-              xrButton.addEventListener('click', onButtonClicked);
-              xrButton.disabled = video.readyState > 2;
-            }
-          });
-        }
-      }
-
       let uiCanvas = document.createElement('canvas');
-      uiCanvas.width = 1024;
-      uiCanvas.height = 256;
+      uiCanvas.width = 1024; uiCanvas.height = 256;
       let uiContext = uiCanvas.getContext('2d');
 
-      function drawUI() {
-        uiContext.clearRect(0, 0, uiCanvas.width, uiCanvas.height);
-
-        // 背景
-        uiContext.fillStyle = 'rgba(0, 0, 0, 0.7)';
-        if (uiContext.roundRect) {
-          uiContext.beginPath();
-          uiContext.roundRect(0, 0, 1024, 256, 40);
-          uiContext.fill();
-        } else {
-          uiContext.fillRect(0, 0, 1024, 256);
-        }
-
-        // 播放/暂停图标
-        uiContext.fillStyle = 'white';
-        uiContext.font = '80px Arial';
-        uiContext.textAlign = 'center';
-        let statusText = video.paused ? '▶' : '||';
-        uiContext.fillText(statusText, 150, 150);
-
-        // 进度条背景
-        uiContext.fillStyle = '#555';
-        uiContext.fillRect(300, 120, 600, 20);
-
-        // 进度条填充
-        if (video.duration) {
-          let progress = video.currentTime / video.duration;
-          uiContext.fillStyle = '#00ff00';
-          uiContext.fillRect(300, 120, 600 * progress, 20);
-        }
-
-        // 时间文字
-        uiContext.font = '40px Arial';
-        uiContext.fillText(formatTime(video.currentTime) + " / " + formatTime(video.duration), 600, 200);
-      }
+      let maskCanvas = document.createElement('canvas');
+      maskCanvas.width = 1024; maskCanvas.height = 1024;
+      let maskContext = maskCanvas.getContext('2d');
 
       function formatTime(time) {
         if (isNaN(time)) return "0:00";
@@ -203,27 +106,66 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
         return mins + ":" + (secs < 10 ? "0" : "") + secs;
       }
 
-      function drawMask() {
-        maskContext.clearRect(0, 0, 1024, 1024);
-        // 创建一个从中心向边缘扩散的径向渐变，实现边缘模糊遮挡
-        let grad = maskContext.createRadialGradient(512, 512, 400, 512, 512, 510);
-        grad.addColorStop(0, 'rgba(0,0,0,0)'); // 中心透明
-        grad.addColorStop(1, 'rgba(0,0,0,1)'); // 边缘完全黑色
-        maskContext.fillStyle = grad;
-        maskContext.fillRect(0, 0, 1024, 1024);
+      function drawUI() {
+        uiContext.clearRect(0, 0, 1024, 256);
+        uiContext.fillStyle = 'rgba(0, 0, 0, 0.8)';
+        if (uiContext.roundRect) {
+          uiContext.beginPath(); uiContext.roundRect(0, 0, 1024, 256, 40); uiContext.fill();
+        } else {
+          uiContext.fillRect(0, 0, 1024, 256);
+        }
+
+        uiContext.fillStyle = 'white';
+        uiContext.font = '80px Arial';
+        uiContext.textAlign = 'center';
+        uiContext.fillText(video.paused ? '▶' : '||', 150, 150);
+
+        uiContext.fillStyle = '#444';
+        uiContext.fillRect(300, 120, 600, 30);
+        if (video.duration) {
+          uiContext.fillStyle = '#007aff';
+          uiContext.fillRect(300, 120, 600 * (video.currentTime / video.duration), 30);
+        }
+
+        uiContext.font = '36px Arial';
+        uiContext.fillText(formatTime(video.currentTime) + " / " + formatTime(video.duration), 600, 210);
+
+        if (cursorX !== -1) {
+          uiContext.beginPath(); uiContext.arc(cursorX, cursorY, 15, 0, Math.PI * 2);
+          uiContext.fillStyle = 'rgba(255, 255, 255, 0.9)'; uiContext.fill();
+          uiContext.strokeStyle = 'white'; uiContext.lineWidth = 3; uiContext.stroke();
+        }
       }
 
-      // 创建边缘模糊遮罩画布
-      let maskCanvas = document.createElement('canvas');
-      maskCanvas.width = 1024;
-      maskCanvas.height = 1024;
-      let maskContext = maskCanvas.getContext('2d');
+      function drawMask() {
+        maskContext.clearRect(0, 0, 1024, 1024);
+        let b = 100; // blur size
+        let gradL = maskContext.createLinearGradient(0, 512, b, 512);
+        gradL.addColorStop(0, 'black'); gradL.addColorStop(1, 'transparent');
+        maskContext.fillStyle = gradL; maskContext.fillRect(0, 0, b, 1024);
 
-      let gl = null;
-      let xrGLBinding = null;
-      let uiLayer = null;
-      let maskLayer = null;
-      let skyboxLayer = null;
+        let gradR = maskContext.createLinearGradient(1024, 512, 1024 - b, 512);
+        gradR.addColorStop(0, 'black'); gradR.addColorStop(1, 'transparent');
+        maskContext.fillStyle = gradR; maskContext.fillRect(1024 - b, 0, b, 1024);
+
+        let gradT = maskContext.createLinearGradient(512, 0, 512, b);
+        gradT.addColorStop(0, 'black'); gradT.addColorStop(1, 'transparent');
+        maskContext.fillStyle = gradT; maskContext.fillRect(0, 0, 1024, b);
+
+        let gradB = maskContext.createLinearGradient(512, 1024, 512, 1024 - b);
+        gradB.addColorStop(0, 'black'); gradB.addColorStop(1, 'transparent');
+        maskContext.fillStyle = gradB; maskContext.fillRect(0, 1024 - b, 1024, b);
+      }
+
+      function videoSelect() {
+        let s = document.getElementById("videoselect");
+        video.src = s.options[s.selectedIndex].value;
+        xrButton.textContent = 'Loading...';
+        xrButton.disabled = true;
+      }
+      video.oncanplaythrough = () => { xrButton.disabled = false; xrButton.textContent = 'Enter VR'; };
+      videoSelect();
+      document.getElementById("videoselect").onchange = videoSelect;
 
       function onButtonClicked() {
         if (!xrSession) {
@@ -237,149 +179,110 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
       function onSessionStarted(session) {
         xrSession = session;
         xrButton.textContent = 'Exit VR';
+        session.addEventListener('end', () => { xrSession = null; xrButton.textContent = 'Enter VR'; video.pause(); });
 
-        session.addEventListener('end', onSessionEnded);
-
-        // 初始化 WebGL 环境 (用于上传 Canvas 纹理)
         let canvas = document.createElement('canvas');
         gl = canvas.getContext('webgl2', { xrCompatible: true });
         xrGLBinding = new XRWebGLBinding(session, gl);
         xrMediaFactory = new XRMediaBinding(session);
 
         session.requestReferenceSpace('local').then((refSpace) => {
+          xrRefSpace = refSpace;
           let s = document.getElementById("videoselect");
-          let selectedOption = s.options[s.selectedIndex];
+          let opt = s.options[s.selectedIndex];
+          let aspect = (video.videoWidth / (opt.dataset.layout.includes('top-bottom') ? 1 : 2)) / (video.videoHeight / (opt.dataset.layout.includes('top-bottom') ? 2 : 1)) || (16 / 9);
 
-          let angleValue = selectedOption.dataset.angle || (selectedOption.value.includes("180") ? "180" : "360");
-          let angle = (angleValue == "180") ? Math.PI : Math.PI * 2;
-          let layout = selectedOption.dataset.layout || "stereo-top-bottom";
-          let eyeWidth = video.videoWidth / (layout == "stereo-left-right" ? 2 : 1);
-          let eyeHeight = video.videoHeight / (layout == "stereo-top-bottom" ? 2 : 1);
-          let videoAspectRatio = eyeWidth / eyeHeight;
-
-          let upperVerticalAngle = Math.PI / 2;
-          let lowerVerticalAngle = -Math.PI / 2;
-          if (angleValue == "180") {
-            let verticalFieldOfView = Math.PI / videoAspectRatio;
-            if (verticalFieldOfView < Math.PI) {
-              upperVerticalAngle = verticalFieldOfView / 2;
-              lowerVerticalAngle = -verticalFieldOfView / 2;
-            }
-          }
-
-          let layer;
-          if (selectedOption.dataset.type === 'quad') {
-            let distance = parseFloat(selectedOption.dataset.distance || "4.0");
-            layer = xrMediaFactory.createQuadLayer(video, {
-              space: refSpace, layout: layout, width: 4.0, height: 4.0 / videoAspectRatio,
-              transform: new XRRigidTransform({ x: 0, y: 0, z: -distance })
+          let mainLayer;
+          if (opt.dataset.type === 'quad') {
+            let dist = parseFloat(opt.dataset.distance || "4");
+            mainLayer = xrMediaFactory.createQuadLayer(video, {
+              space: refSpace, layout: opt.dataset.layout, width: 4, height: 4 / aspect,
+              transform: new XRRigidTransform({ x: 0, y: 0, z: -dist })
             });
           } else {
-            layer = xrMediaFactory.createEquirectLayer(video, {
-              space: refSpace, centralHorizontalAngle: angle, layout: layout,
-              upperVerticalAngle: upperVerticalAngle, lowerVerticalAngle: lowerVerticalAngle
+            mainLayer = xrMediaFactory.createEquirectLayer(video, {
+              space: refSpace, layout: opt.dataset.layout,
+              centralHorizontalAngle: (opt.dataset.angle == "180" ? Math.PI : Math.PI * 2)
             });
           }
 
-          // 创建空间 UI 图层
-          uiLayer = xrGLBinding.createQuadLayer({
-            space: refSpace, viewPixelWidth: 1024, viewPixelHeight: 256, layout: "mono"
-          });
+          uiLayer = xrGLBinding.createQuadLayer({ space: refSpace, viewPixelWidth: 1024, viewPixelHeight: 256, layout: "mono" });
           uiLayer.width = 1.0; uiLayer.height = 0.25;
           uiLayer.transform = new XRRigidTransform({ x: 0, y: -0.8, z: -2.0 });
 
           let layers = [];
-          if (selectedOption.dataset.type === 'quad') {
-            // 1. 全景星空背景
-            if (skyboxImage.complete) {
-              skyboxLayer = xrGLBinding.createEquirectLayer({
-                space: refSpace, viewPixelWidth: 2048, viewPixelHeight: 1024, layout: "mono"
-              });
-              layers.push(skyboxLayer);
-            }
-            // 2. 视频巨幕
-            layers.push(layer);
-            // 3. 边缘模糊遮罩
-            maskLayer = xrGLBinding.createQuadLayer({
-              space: refSpace, viewPixelWidth: 1024, viewPixelHeight: 1024, layout: "mono"
-            });
-            maskLayer.width = 4.2; maskLayer.height = 4.2 / videoAspectRatio;
-            let dist = parseFloat(selectedOption.dataset.distance || "4.0");
-            maskLayer.transform = new XRRigidTransform({ x: 0, y: 0, z: -dist + 0.01 });
-            layers.push(maskLayer);
+          if (opt.dataset.type === 'quad') {
+            skyboxLayer = xrGLBinding.createEquirectLayer({ space: refSpace, viewPixelWidth: 2048, viewPixelHeight: 1024, layout: "mono" });
+            maskLayer = xrGLBinding.createQuadLayer({ space: refSpace, viewPixelWidth: 1024, viewPixelHeight: 1024, layout: "mono" });
+            maskLayer.width = 4.2; maskLayer.height = 4.2 / aspect;
+            maskLayer.transform = new XRRigidTransform({ x: 0, y: 0, z: -parseFloat(opt.dataset.distance) + 0.01 });
+            layers.push(skyboxLayer, mainLayer, maskLayer);
           } else {
-            layers.push(layer);
+            layers.push(mainLayer);
           }
-          // 4. 控制面板图层总是在最前
           layers.push(uiLayer);
-
           session.updateRenderState({ layers: layers });
           session.requestAnimationFrame(onXRFrame);
         });
       }
 
-      function onSessionEnded(event) {
-        xrSession = null;
-        xrButton.textContent = 'Enter VR';
-        video.pause();
-      }
+      function buttonPressedThisFrame(gp, i) { return gp && gp.buttons[i] && gp.buttons[i].pressed; }
 
       function onXRFrame(time, frame) {
-        let session = frame.session;
-        session.requestAnimationFrame(onXRFrame);
+        frame.session.requestAnimationFrame(onXRFrame);
+        cursorX = -1; cursorY = -1;
 
-        // 刷新空间 UI 纹理
-        if (uiLayer && uiLayer.needsRedraw) {
-          drawUI();
-          let glayer = xrGLBinding.getSubImage(uiLayer, frame);
+        for (let source of frame.session.inputSources) {
+          if (source.handedness === 'right' && source.targetRaySpace) {
+            let pose = frame.getPose(source.targetRaySpace, xrRefSpace);
+            if (pose && uiLayer) {
+              let pos = pose.transform.position;
+              let m = pose.transform.matrix;
+              let dir = { x: -m[8], y: -m[9], z: -m[10] };
+
+              if (Math.abs(dir.z) > 0.1) {
+                let t = (-2.0 - pos.z) / dir.z;
+                if (t > 0) {
+                  let hx = pos.x + t * dir.x;
+                  let hy = pos.y + t * dir.y;
+                  if (Math.abs(hx) <= 0.5 && Math.abs(hy + 0.8) <= 0.125) {
+                    cursorX = (hx + 0.5) * 1024;
+                    cursorY = (0.125 - (hy + 0.8)) * (256 / 0.25);
+                    if (buttonPressedThisFrame(source.gamepad, 0)) {
+                      if (cursorX < 300) { if (video.paused) video.play(); else video.pause(); }
+                      else if (cursorX >= 300 && cursorX <= 900) { video.currentTime = ((cursorX - 300) / 600) * video.duration; }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+
+        if (uiLayer) {
+          uiLayer.needsRedraw = true; drawUI();
+          let sub = xrGLBinding.getSubImage(uiLayer, frame);
           gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
-          gl.bindTexture(gl.TEXTURE_2D, glayer.colorTexture);
+          gl.bindTexture(gl.TEXTURE_2D, sub.colorTexture);
           gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, 1024, 256, gl.RGBA, gl.UNSIGNED_BYTE, uiCanvas);
         }
-
-        // 刷新星空背景 (仅加载一次)
-        if (skyboxLayer && skyboxLayer.needsRedraw) {
-          let glayer = xrGLBinding.getSubImage(skyboxLayer, frame);
-          gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
-          gl.bindTexture(gl.TEXTURE_2D, glayer.colorTexture);
+        if (skyboxLayer && skyboxLayer.needsRedraw && skyboxImage.complete) {
+          let sub = xrGLBinding.getSubImage(skyboxLayer, frame);
+          gl.bindTexture(gl.TEXTURE_2D, sub.colorTexture);
           gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, skyboxImage.width, skyboxImage.height, gl.RGBA, gl.UNSIGNED_BYTE, skyboxImage);
         }
-
-        // 刷新边缘模糊遮罩 (仅加载一次)
         if (maskLayer && maskLayer.needsRedraw) {
           drawMask();
-          let glayer = xrGLBinding.getSubImage(maskLayer, frame);
-          gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
-          gl.bindTexture(gl.TEXTURE_2D, glayer.colorTexture);
+          let sub = xrGLBinding.getSubImage(maskLayer, frame);
+          gl.bindTexture(gl.TEXTURE_2D, sub.colorTexture);
           gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, 1024, 1024, gl.RGBA, gl.UNSIGNED_BYTE, maskCanvas);
-        }
-        gl.bindTexture(gl.TEXTURE_2D, null);
-
-        let force_mono = false;
-        for (let source of session.inputSources) {
-          if (source.gamepad) {
-            if (buttonPressedThisFrame(source.gamepad, 0)) {
-              video.currentTime = 0;
-              video.play();
-            } else if (buttonPressedThisFrame(source.gamepad, 1)) {
-              if (video.paused) video.play();
-              else video.pause();
-            }
-            force_mono |= buttonPressedThisFrame(source.gamepad, 4);
-          }
-        }
-
-        if (xrSession && xrSession.renderState.layers.length > 0) {
-          let layer = xrSession.renderState.layers[0];
-          if (layer.forceMonoPresentation !== undefined) {
-            layer.forceMonoPresentation = force_mono;
-          }
         }
       }
 
-      // Start the XR application.
-      initXR();
-
+      if (navigator.xr) {
+        navigator.xr.isSessionSupported('immersive-vr').then(s => { if (s) xrButton.disabled = false; });
+        xrButton.onclick = onButtonClicked;
+      }
     })();
   </script>
 </body>

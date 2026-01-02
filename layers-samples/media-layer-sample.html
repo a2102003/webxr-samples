@@ -311,7 +311,8 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
           // 仅为平面 (quad) 模式（如金鱼视频）添加全景背景和边缘模糊
           if (selectedOption.dataset.type === 'quad') {
-            // 1. 全景图背景图层
+            /* 
+            // 暂时注释掉背景图层，用于排查卡死问题
             try {
               if (skyboxImage.complete && skyboxImage.naturalWidth !== 0) {
                 let backgroundLayer = xrMediaFactory.createEquirectLayer(skyboxImage, {
@@ -321,14 +322,14 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
                 });
                 layers.push(backgroundLayer);
               }
-            } catch (e) {
-              console.error("Background layer failed:", e);
-            }
+            } catch (e) { console.error(e); }
+            */
 
             // 2. 核心视频图层
             layers.push(layer);
 
-            // 3. 边缘模糊遮罩
+            /*
+            // 暂时注释掉遮罩图层
             try {
               let maskDist = parseFloat(selectedOption.dataset.distance || "2.0");
               let maskLayer = xrMediaFactory.createQuadLayer(maskCanvas, {
@@ -338,9 +339,8 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
                 transform: new XRRigidTransform({ x: 0, y: 0, z: -maskDist + 0.01 })
               });
               layers.push(maskLayer);
-            } catch (e) {
-              console.error("Mask layer failed:", e);
-            }
+            } catch (e) { console.error(e); }
+            */
           } else {
             // 普通 360/180 采样视频
             layers.push(layer);

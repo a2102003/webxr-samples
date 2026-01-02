@@ -212,9 +212,9 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
       function drawMask() {
         maskContext.clearRect(0, 0, 1024, 1024);
 
-        let blurSize = 100; // 边缘模糊的宽度
+        let blurSize = 200; // 增加羽化宽度到 200 像素，使其更显眼
 
-        // 使用四个线型渐变来创建一个不遮挡画面中心的方形羽化效果
+        // 渲染四个边角的渐变
         // 左边缘
         let gradL = maskContext.createLinearGradient(0, 512, blurSize, 512);
         gradL.addColorStop(0, 'rgba(0,0,0,1)');
@@ -345,12 +345,18 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
         video.pause();
       }
 
+      let initialRedrawCount = 10; // 前10帧强制刷新，确保初始化成功
+
       function onXRFrame(time, frame) {
         let session = frame.session;
         session.requestAnimationFrame(onXRFrame);
 
-        // 仅在 needsRedraw 时更新，避免过度重绘
-        if (uiLayer && uiLayer.needsRedraw) {
+        // 强制前几帧重绘，确保所有设备都能正确看到图层
+        let forceRedraw = initialRedrawCount > 0;
+        if (forceRedraw) initialRedrawCount--;
+
+        // 仅在 needsRedraw 时更新，或者在前几帧强制更新
+        if (uiLayer && (uiLayer.needsRedraw || forceRedraw)) {
           drawUI();
           let glayer = xrGLBinding.getSubImage(uiLayer, frame);
           gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
@@ -358,14 +364,14 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
           gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, 1024, 256, gl.RGBA, gl.UNSIGNED_BYTE, uiCanvas);
         }
 
-        if (skyboxLayer && skyboxLayer.needsRedraw) {
+        if (skyboxLayer && (skyboxLayer.needsRedraw || forceRedraw)) {
           let glayer = xrGLBinding.getSubImage(skyboxLayer, frame);
           gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
           gl.bindTexture(gl.TEXTURE_2D, glayer.colorTexture);
           gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, skyboxImage.width, skyboxImage.height, gl.RGBA, gl.UNSIGNED_BYTE, skyboxImage);
         }
 
-        if (maskLayer && maskLayer.needsRedraw) {
+        if (maskLayer && (maskLayer.needsRedraw || forceRedraw)) {
           drawMask();
           let glayer = xrGLBinding.getSubImage(maskLayer, frame);
           gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);

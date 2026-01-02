@@ -303,8 +303,14 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
             });
           }
 
-          // 【排查核心】仅保留视频层，移除所有其他图层
-          session.updateRenderState({ layers: [layer] });
+          let uiLayer = xrMediaFactory.createQuadLayer(uiCanvas, {
+            space: refSpace,
+            width: 1.0,
+            height: 0.25,
+            transform: new XRRigidTransform({ x: 0, y: -0.8, z: -2.0 })
+          });
+
+          session.updateRenderState({ layers: [layer, uiLayer] });
 
           // Inform the session that we're ready to begin drawing.
           session.requestAnimationFrame(onXRFrame);
@@ -324,6 +330,17 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
       // Called every time the XRSession requests that a new frame be drawn.
       function onXRFrame(time, frame) {
         let session = frame.session;
+
+        // 更新 UI
+        drawUI();
+        // 查找并重绘 UI 层 (通过尺寸识别)
+        if (session.renderState.layers) {
+          for (let l of session.renderState.layers) {
+            if (l.width === 1.0 && l.height === 0.25) {
+              l.needsRedraw = true;
+            }
+          }
+        }
 
         // Inform the session that we're ready for the next frame.
         session.requestAnimationFrame(onXRFrame);

@@ -203,13 +203,6 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
         uiContext.fillText(formatTime(video.currentTime) + " / " + formatTime(video.duration), 600, 200);
       }
 
-      function formatTime(time) {
-        if (isNaN(time)) return "0:00";
-        let mins = Math.floor(time / 60);
-        let secs = Math.floor(time % 60);
-        return mins + ":" + (secs < 10 ? "0" : "") + secs;
-      }
-
       // 创建边缘模糊遮罩画布
       let maskCanvas = document.createElement('canvas');
       maskCanvas.width = 1024;
@@ -218,12 +211,37 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
       function drawMask() {
         maskContext.clearRect(0, 0, 1024, 1024);
-        // 使用径向渐变
-        let grad = maskContext.createRadialGradient(512, 512, 300, 512, 512, 512);
-        grad.addColorStop(0, 'rgba(0,0,0,0)');
-        grad.addColorStop(1, 'rgba(0,0,0,1)');
-        maskContext.fillStyle = grad;
-        maskContext.fillRect(0, 0, 1024, 1024);
+
+        let blurSize = 100; // 边缘模糊的宽度
+
+        // 使用四个线型渐变来创建一个不遮挡画面中心的方形羽化效果
+        // 左边缘
+        let gradL = maskContext.createLinearGradient(0, 512, blurSize, 512);
+        gradL.addColorStop(0, 'rgba(0,0,0,1)');
+        gradL.addColorStop(1, 'rgba(0,0,0,0)');
+        maskContext.fillStyle = gradL;
+        maskContext.fillRect(0, 0, blurSize, 1024);
+
+        // 右边缘
+        let gradR = maskContext.createLinearGradient(1024, 512, 1024 - blurSize, 512);
+        gradR.addColorStop(0, 'rgba(0,0,0,1)');
+        gradR.addColorStop(1, 'rgba(0,0,0,0)');
+        maskContext.fillStyle = gradR;
+        maskContext.fillRect(1024 - blurSize, 0, blurSize, 1024);
+
+        // 上边缘
+        let gradT = maskContext.createLinearGradient(512, 0, 512, blurSize);
+        gradT.addColorStop(0, 'rgba(0,0,0,1)');
+        gradT.addColorStop(1, 'rgba(0,0,0,0)');
+        maskContext.fillStyle = gradT;
+        maskContext.fillRect(0, 0, 1024, blurSize);
+
+        // 下边缘
+        let gradB = maskContext.createLinearGradient(512, 1024, 512, 1024 - blurSize);
+        gradB.addColorStop(0, 'rgba(0,0,0,1)');
+        gradB.addColorStop(1, 'rgba(0,0,0,0)');
+        maskContext.fillStyle = gradB;
+        maskContext.fillRect(0, 1024 - blurSize, 1024, blurSize);
       }
 
       let gl = null;

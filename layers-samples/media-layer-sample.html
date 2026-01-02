@@ -277,20 +277,23 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
             }
           }
 
+          if (video.videoWidth === 0) {
+            console.error("Video dimensions not ready!");
+            // 如果尺寸还没出来，等 100ms 再试一次，或者提醒用户
+          }
+
           let layer;
           if (selectedOption.dataset.type === 'quad') {
-            // 平面模式：像电影院屏幕一样
-            let distance = parseFloat(selectedOption.dataset.distance || "2.0");
-            let width = 4.0; // 屏幕宽度 4 米
+            let distance = parseFloat(selectedOption.dataset.distance || "4.0");
+            let width = 4.0;
             layer = xrMediaFactory.createQuadLayer(video, {
               space: refSpace,
               layout: layout,
               width: width,
               height: width / videoAspectRatio,
-              transform: new XRRigidTransform({ x: 0, y: 0, z: -distance }) // 放置在用户前方 distance 米处
+              transform: new XRRigidTransform({ x: 0, y: 0, z: -distance })
             });
           } else {
-            // 球幕模式：VR180/360 沉浸式
             layer = xrMediaFactory.createEquirectLayer(video, {
               space: refSpace,
               centralHorizontalAngle: angle,
@@ -300,56 +303,8 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
             });
           }
 
-          let uiLayer = xrMediaFactory.createQuadLayer(uiCanvas, {
-            space: refSpace,
-            width: 1.0,
-            height: 0.25,
-            transform: new XRRigidTransform({ x: 0, y: -0.8, z: -2.0 }) // 放在视频下方一点
-          });
-
-          let layers = [];
-
-          // 仅为平面 (quad) 模式（如金鱼视频）添加全景背景和边缘模糊
-          if (selectedOption.dataset.type === 'quad') {
-            /* 
-            // 暂时注释掉背景图层，用于排查卡死问题
-            try {
-              if (skyboxImage.complete && skyboxImage.naturalWidth !== 0) {
-                let backgroundLayer = xrMediaFactory.createEquirectLayer(skyboxImage, {
-                  space: refSpace,
-                  centralHorizontalAngle: Math.PI * 2,
-                  layout: "mono"
-                });
-                layers.push(backgroundLayer);
-              }
-            } catch (e) { console.error(e); }
-            */
-
-            // 2. 核心视频图层
-            layers.push(layer);
-
-            /*
-            // 暂时注释掉遮罩图层
-            try {
-              let maskDist = parseFloat(selectedOption.dataset.distance || "2.0");
-              let maskLayer = xrMediaFactory.createQuadLayer(maskCanvas, {
-                space: refSpace,
-                width: 4.2,
-                height: (4.2 / videoAspectRatio),
-                transform: new XRRigidTransform({ x: 0, y: 0, z: -maskDist + 0.01 })
-              });
-              layers.push(maskLayer);
-            } catch (e) { console.error(e); }
-            */
-          } else {
-            // 普通 360/180 采样视频
-            layers.push(layer);
-          }
-
-          // 4. UI 控制图层
-          layers.push(uiLayer);
-
-          session.updateRenderState({ layers: layers });
+          // 【排查核心】仅保留视频层，移除所有其他图层
+          session.updateRenderState({ layers: [layer] });
 
           // Inform the session that we're ready to begin drawing.
           session.requestAnimationFrame(onXRFrame);

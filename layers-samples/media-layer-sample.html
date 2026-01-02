@@ -139,7 +139,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
       function drawMask() {
         maskContext.clearRect(0, 0, 1024, 1024);
-        let b = 100; // blur size
+        let b = 100;
         let gradL = maskContext.createLinearGradient(0, 512, b, 512);
         gradL.addColorStop(0, 'black'); gradL.addColorStop(1, 'transparent');
         maskContext.fillStyle = gradL; maskContext.fillRect(0, 0, b, 1024);
@@ -190,19 +190,26 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
           xrRefSpace = refSpace;
           let s = document.getElementById("videoselect");
           let opt = s.options[s.selectedIndex];
-          let aspect = (video.videoWidth / (opt.dataset.layout.includes('top-bottom') ? 1 : 2)) / (video.videoHeight / (opt.dataset.layout.includes('top-bottom') ? 2 : 1)) || (16 / 9);
+
+          let layout = opt.dataset.layout || "stereo-top-bottom";
+          let angleValue = opt.dataset.angle || "180";
+          let type = opt.dataset.type;
+
+          let eyeWidth = video.videoWidth / (layout.includes('left-right') ? 2 : 1);
+          let eyeHeight = video.videoHeight / (layout.includes('top-bottom') ? 2 : 1);
+          let videoAspectRatio = (eyeWidth && eyeHeight) ? (eyeWidth / eyeHeight) : (16 / 9);
 
           let mainLayer;
-          if (opt.dataset.type === 'quad') {
+          if (type === 'quad') {
             let dist = parseFloat(opt.dataset.distance || "4");
             mainLayer = xrMediaFactory.createQuadLayer(video, {
-              space: refSpace, layout: opt.dataset.layout, width: 4, height: 4 / aspect,
+              space: refSpace, layout: layout, width: 4.0, height: 4.0 / videoAspectRatio,
               transform: new XRRigidTransform({ x: 0, y: 0, z: -dist })
             });
           } else {
             mainLayer = xrMediaFactory.createEquirectLayer(video, {
-              space: refSpace, layout: opt.dataset.layout,
-              centralHorizontalAngle: (opt.dataset.angle == "180" ? Math.PI : Math.PI * 2)
+              space: refSpace, layout: layout,
+              centralHorizontalAngle: (angleValue == "180" ? Math.PI : Math.PI * 2)
             });
           }
 
@@ -211,10 +218,10 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
           uiLayer.transform = new XRRigidTransform({ x: 0, y: -0.8, z: -2.0 });
 
           let layers = [];
-          if (opt.dataset.type === 'quad') {
+          if (type === 'quad') {
             skyboxLayer = xrGLBinding.createEquirectLayer({ space: refSpace, viewPixelWidth: 2048, viewPixelHeight: 1024, layout: "mono" });
             maskLayer = xrGLBinding.createQuadLayer({ space: refSpace, viewPixelWidth: 1024, viewPixelHeight: 1024, layout: "mono" });
-            maskLayer.width = 4.2; maskLayer.height = 4.2 / aspect;
+            maskLayer.width = 4.2; maskLayer.height = 4.2 / videoAspectRatio;
             maskLayer.transform = new XRRigidTransform({ x: 0, y: 0, z: -parseFloat(opt.dataset.distance) + 0.01 });
             layers.push(skyboxLayer, mainLayer, maskLayer);
           } else {
@@ -260,23 +267,31 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
         }
 
         if (uiLayer) {
-          uiLayer.needsRedraw = true; drawUI();
+          uiLayer.needsRedraw = true; // Always update UI
+          drawUI();
           let sub = xrGLBinding.getSubImage(uiLayer, frame);
           gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
           gl.bindTexture(gl.TEXTURE_2D, sub.colorTexture);
           gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, 1024, 256, gl.RGBA, gl.UNSIGNED_BYTE, uiCanvas);
         }
-        if (skyboxLayer && skyboxLayer.needsRedraw && skyboxImage.complete) {
-          let sub = xrGLBinding.getSubImage(skyboxLayer, frame);
-          gl.bindTexture(gl.TEXTURE_2D, sub.colorTexture);
-          gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, skyboxImage.width, skyboxImage.height, gl.RGBA, gl.UNSIGNED_BYTE, skyboxImage);
+
+        if (skyboxLayer && skyboxLayer.needsRedraw) {
+          if (skyboxImage.complete && skyboxImage.naturalWidth > 0) {
+            let sub = xrGLBinding.getSubImage(skyboxLayer, frame);
+            gl.bindTexture(gl.TEXTURE_2D, sub.colorTexture);
+            gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, skyboxImage.width, skyboxImage.height, gl.RGBA, gl.UNSIGNED_BYTE, skyboxImage);
+          } else {
+            skyboxLayer.needsRedraw = true; // Retry next frame
+          }
         }
+
         if (maskLayer && maskLayer.needsRedraw) {
           drawMask();
           let sub = xrGLBinding.getSubImage(maskLayer, frame);
           gl.bindTexture(gl.TEXTURE_2D, sub.colorTexture);
           gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, 1024, 1024, gl.RGBA, gl.UNSIGNED_BYTE, maskCanvas);
         }
+        gl.bindTexture(gl.TEXTURE_2D, null);
       }
 
       if (navigator.xr) {
